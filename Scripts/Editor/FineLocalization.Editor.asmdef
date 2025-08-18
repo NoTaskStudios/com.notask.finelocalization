@@ -1,0 +1,20 @@
+{
+    "name": "FineLocalization.Editor",
+    "rootNamespace": "",
+    "references": [
+        "FineLocalization",
+        "Unity.EditorCoroutines.Editor",
+        "FineLocalization.Utils"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

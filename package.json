@@ -1,0 +1,12 @@
+{
+  "name": "com.notask.finelocalization",
+  "displayName": "Fine Localization",
+  "version": "1.0.0",
+  "unity": "2019.2",
+  "description": "A fazer",
+  "dependencies": {
+    "com.unity.editorcoroutines": "1.0.0",
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  },
+  "preview": false
+}

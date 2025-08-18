@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 49b3a03ff721de648a7fbac1b4b46057, type: 3}
+  m_Name: LocalizationSettings
+  m_EditorClassIdentifier: 
+  TableId: 1RvKY3VE_y5FPhEECCa5dv4F7REJ7rBtGzQg9Z_B_DE4
+  Sheets:
+  - Name: Menu
+    Id: 0
+    TextAsset: {fileID: 0}
+  - Name: Settings
+    Id: 331980525
+    TextAsset: {fileID: 0}
+  - Name: Tests
+    Id: 1674352817
+    TextAsset: {fileID: 0}
+  SaveFolder: {fileID: 102900000, guid: 664e0b416cee079428b7ab2cce47cdb1, type: 3}
