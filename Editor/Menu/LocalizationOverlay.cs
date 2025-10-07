@@ -52,7 +52,7 @@ namespace FineLocalization.Editor.Menu
 
         public override void OnCreated()
         {
-            _icon = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/FineLocalization/Editor/Icons/translate.png");
+            _icon = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/com.notask.fineLocalization/Editor/Icons/translate.png");
 
             if (_icon != null)
             {
