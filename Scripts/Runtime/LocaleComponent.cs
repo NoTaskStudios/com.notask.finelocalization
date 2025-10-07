@@ -19,7 +19,7 @@ namespace FineLocalization.Runtime
             if (!text) text = GetComponent<TMP_Text>();
             text.SetText(LocalizationManager.Localize(key));
         }
-
+        
         public void ChangeKey(string newKey)
         {
             key = newKey;

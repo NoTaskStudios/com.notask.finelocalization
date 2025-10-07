@@ -2,9 +2,9 @@
     "name": "FineLocalization",
     "rootNamespace": "",
     "references": [
-        "Unity.EditorCoroutines.Editor",
         "Unity.TextMeshPro",
-        "FineLocalization.Utils"
+        "FineLocalization.Utils",
+        "Unity.EditorCoroutines.Editor"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -6,159 +6,377 @@ using UnityEngine;
 
 namespace FineLocalization.Runtime
 {
-	/// <summary>
-	/// Localization manager.
-	/// </summary>
     public static class LocalizationManager
     {
-		/// <summary>
-		/// Fired when localization changed.
-		/// </summary>
-        public static event Action OnLocalizationChanged = () => { }; 
+        public static event Action OnLocalizationChanged = () => { };
 
+        // Dicionário: idioma -> (chave -> valor)
         public static Dictionary<string, Dictionary<string, string>> Dictionary = new();
-        private static string _language = "en-us";
 
-		/// <summary>
-		/// Get or set language.
-		/// </summary>
+        // CSVs baixados em runtime (memória). Chave = sheet.Name
+        private static Dictionary<string, string> _runtimeCsvOverride = null;
+
+        // Hook opcional para ler CSV persistido (ex.: IndexedDB/WebGL) quando não houver override em memória
+        public static Func<string, string> RuntimeCsvResolver;
+
+        // Hook opcional para persistir CSV atualizado (edições em runtime)
+        public static Action<string, string> RuntimeCsvPersistenceHook;
+
+        public const string DefaultLanguage = "en-us";
+        private static string _language = DefaultLanguage;
+
         public static string Language
         {
             get => _language;
-            set { _language = value; OnLocalizationChanged(); }
+            set
+            {
+                if (_language == value) return;
+                _language = Dictionary.ContainsKey(value) ? value : DefaultLanguage;
+                OnLocalizationChanged();
+            }
         }
 
-		/// <summary>
-		/// Set default language.
-		/// </summary>
         public static void AutoLanguage()
         {
             Language = "en-us";
         }
 
         /// <summary>
-        /// Read localization spreadsheets.
+        /// Injeta CSVs baixados em runtime (substitui TextAssets).
         /// </summary>
+        public static void LoadFromCsvMap(Dictionary<string, string> csvBySheet)
+        {
+            _runtimeCsvOverride = csvBySheet != null && csvBySheet.Count > 0
+                ? new Dictionary<string, string>(csvBySheet)
+                : null;
+
+            ReloadAll();
+        }
+
+        public static void ReloadAll()
+        {
+            var currentLang = _language;
+            Dictionary.Clear();
+            Read();
+            Language = currentLang; // revalida idioma
+            OnLocalizationChanged();
+        }
+
+        public static void Initialize(string language)
+        {
+            LanguageReader.GetLanguageKey(language.ToLower());
+            if (Dictionary.Count == 0)
+                Read();
+
+            Language = language;
+        }
+
         public static void Read()
         {
             if (Dictionary.Count > 0) return;
 
-            var keys = new List<string>();
+            var keys = new HashSet<string>(); // evita duplicidade global de chave
+            var settings = LocalizationSettings.Instance;
 
-            foreach (var sheet in LocalizationSettings.Instance.Sheets)
+            foreach (var source in settings.Sources)
             {
-                var textAsset = sheet.TextAsset;
-                var lines = GetLines(textAsset.text);
-                var languages = lines[0].Split(',').Select(i => i.Trim()).Where(i => !string.IsNullOrWhiteSpace(i)).ToList();
-
-                if (languages.Count != languages.Distinct().Count())
+                foreach (var sheet  in source.Sheets)
                 {
-                    Debug.LogError($"Duplicated languages found in `{sheet.Name}`. This sheet is not loaded.");
-                    continue;
-                }
-
-                for (var i = 1; i < languages.Count; i++)
-                {
-                    if (!Dictionary.ContainsKey(languages[i]))
+                    // 1) override em memória
+                    string rawText = null;
+                    if (_runtimeCsvOverride != null &&
+                        _runtimeCsvOverride.TryGetValue(sheet.Name, out var csvFromRuntime) &&
+                        !string.IsNullOrWhiteSpace(csvFromRuntime))
                     {
-                        Dictionary.Add(languages[i], new Dictionary<string, string>());
+                        rawText = csvFromRuntime;
                     }
-                }
-
-                for (var i = 1; i < lines.Count; i++)
-                {
-                    var columns = GetColumns(lines[i]);
-                    var key = columns[1];
-
-                    if (key == "") continue;
-
-                    if (keys.Contains(key))
+                    // 2) resolver externo (persistente / disco / IndexedDB)
+                    else if (RuntimeCsvResolver != null)
                     {
-                        Debug.LogError($"Duplicated key `{key}` found in `{sheet.Name}`. This key is not loaded.");
+                        var csvFromDisk = RuntimeCsvResolver(sheet.Name);
+                        if (!string.IsNullOrWhiteSpace(csvFromDisk))
+                            rawText = csvFromDisk;
+                    }
+                    // 3) fallback TextAsset
+                    rawText ??= sheet.TextAsset.text;
+                    
+                    var lines = GetLines(rawText);
+                    if (lines.Count == 0)
+                    {
+                        Debug.LogError($"[Fine Localization] Sheet `{sheet.Name}` está vazio.");
+                        continue;
+                    }
+                    
+                    var header = lines[0]
+                        .Split(',')
+                        .Select(i => i.Trim())
+                        .Where(i => !string.IsNullOrWhiteSpace(i))
+                        .ToList();
+                    
+                    if (header.Count < 3)
+                    {
+                        Debug.LogError($"[Fine Localization] Header inválido em `{sheet.Name}`. Esperado: Index,Key,<langs...>");
+                        continue;
+                    }
+                    
+                    if (header.Count != header.Distinct(StringComparer.OrdinalIgnoreCase).Count())
+                    {
+                        Debug.LogError($"[Fine Localization] Idiomas duplicados em `{sheet.Name}`. Sheet ignorado.");
                         continue;
                     }
 
-                    keys.Add(key);
-
-                    for (var j = 2; j < languages.Count; j++)
+                    var skip = LocalizationSettings.Instance.skip;
+                    
+                    // Cria dicionários por idioma (pula Index e Key)
+                    for (var i = skip; i < header.Count; i++)
                     {
-                        if (Dictionary[languages[j]].ContainsKey(key))
+                        var lang = header[i];
+                        if (!Dictionary.ContainsKey(lang))
+                            Dictionary.Add(lang, new Dictionary<string, string>(StringComparer.Ordinal));
+                    }
+                    
+                    // Linhas de dados
+                    for (var i = 1; i < lines.Count; i++)
+                    {
+                        var cols = GetColumns(lines[i]);
+                        if (cols.Count < skip) continue;
+                        
+                        var key = cols[skip];
+                        if (string.IsNullOrWhiteSpace(key)) continue;
+                    
+                        // Permite a mesma key em outros sheets; se quiser global único, mantenha esse HashSet:
+                        if (keys.Contains(key))
                         {
-                            Debug.LogError($"Duplicated key `{key}` in `{sheet.Name}`.");
+                            Debug.LogError($"[Fine Localization] Duplicated key `{key}` (sheet `{sheet.Name}`). Linha ignorada.");
+                            continue;
                         }
-                        else
+                        keys.Add(key);
+                    
+                        for (var j = skip+1; j < header.Count; j++)
                         {
-                            Dictionary[languages[j]].Add(key, columns[j]);
+                            var lang = header[j];
+                            var value = j < cols.Count ? cols[j] : string.Empty;
+                    
+                            if (!Dictionary[lang].ContainsKey(key))
+                                Dictionary[lang].Add(key, value);
+                            else
+                                Debug.LogError($"[Fine Localization] Duplicated key `{key}` para idioma `{lang}` em `{sheet.Name}`.");
                         }
                     }
                 }
+                
             }
 
-            AutoLanguage();
+            // Define idioma padrão automático se nada foi setado ainda
+            if (string.IsNullOrEmpty(_language))
+                AutoLanguage();
+            else
+                Language = _language; // valida caso idioma não exista (cai para Default)
         }
 
-        /// <summary>
-        /// Check if a key exists in localization.
-        /// </summary>
         public static bool HasKey(string localizationKey)
         {
-            return Dictionary.ContainsKey(Language) && Dictionary[Language].ContainsKey(localizationKey);
+            return Dictionary.ContainsKey(Language) &&
+                   Dictionary[Language].ContainsKey(localizationKey);
         }
 
-        /// <summary>
-        /// Get localized value by localization key.
-        /// </summary>
         public static string Localize(string localizationKey)
         {
             if (Dictionary.Count == 0)
-            {
                 Read();
-            }
 
-            if (!Dictionary.ContainsKey(Language)) throw new KeyNotFoundException("Language not found: " + Language);
+            if (!Dictionary.ContainsKey(Language))
+                throw new KeyNotFoundException("Language not found: " + Language);
 
-            var missed = !Dictionary[Language].ContainsKey(localizationKey) || Dictionary[Language][localizationKey] == "";
+            var exists = Dictionary[Language].TryGetValue(localizationKey, out var value);
+            var missed = !exists || string.IsNullOrEmpty(value);
 
             if (missed)
             {
-                Debug.LogWarning($"Translation not found: {localizationKey} ({Language}).");
-
-                return Dictionary[Language].ContainsKey(localizationKey) ? Dictionary[Language][localizationKey] : localizationKey;
+                Debug.LogWarning($"[Fine Localization] Translation not found: {localizationKey} ({Language} - {value}).");
+                return exists ? value : localizationKey;
             }
 
-            return Dictionary[Language][localizationKey];
+            return value;
         }
 
-	    /// <summary>
-	    /// Get localized value by localization key.
-	    /// </summary>
-		public static string Localize(string localizationKey, params object[] args)
+        public static string Localize(string localizationKey, params object[] args)
         {
             var pattern = Localize(localizationKey);
-
             return string.Format(pattern, args);
         }
 
+        /// <summary>
+        /// Atualiza uma tradução em memória e, opcionalmente, persiste no CSV do sheet.
+        /// </summary>
+        public static void SetTranslation(string language, string key, string value,
+            bool persist = false, string sheetName = null)
+        {
+            if (!Dictionary.ContainsKey(language))
+                Dictionary[language] = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            Dictionary[language][key] = value;
+            OnLocalizationChanged();
+
+            if (!persist) return;
+
+            // Preparar CSV atual do sheet
+            var settings = LocalizationSettings.Instance;
+            if (string.IsNullOrEmpty(sheetName))
+                sheetName = settings.Sources.FirstOrDefault()?.Sheets?.FirstOrDefault()?.Name;
+
+            string currentCsv = null;
+
+            if (_runtimeCsvOverride != null)
+                _runtimeCsvOverride.TryGetValue(sheetName, out currentCsv);
+
+            if (string.IsNullOrWhiteSpace(currentCsv) && RuntimeCsvResolver != null)
+                currentCsv = RuntimeCsvResolver(sheetName);
+
+            if (string.IsNullOrWhiteSpace(currentCsv))
+            {
+                var sheet = settings.Sources
+                    .SelectMany(s => s.Sheets)
+                    .FirstOrDefault(s => s.Name == sheetName);
+
+                if (sheet != null) currentCsv = sheet.TextAsset?.text;
+
+            }
+
+            if (string.IsNullOrWhiteSpace(currentCsv))
+            {
+                Debug.LogError($"[Fine Localization] Não foi possível carregar CSV de `{sheetName}` para persistência.");
+                return;
+            }
+
+            // Reescrever linha/coluna no CSV
+            var lines = GetLines(currentCsv);
+            if (lines.Count == 0)
+            {
+                Debug.LogError($"[Fine Localization] CSV vazio em `{sheetName}`.");
+                return;
+            }
+
+            var header = GetColumns(lines[0]); // Index, Key, lang...
+            if (header.Count < 2)
+            {
+                Debug.LogError($"[Fine Localization] Header inválido em `{sheetName}`.");
+                return;
+            }
+
+            var langIdx = header.FindIndex(h => string.Equals(h, language, StringComparison.OrdinalIgnoreCase));
+            if (langIdx < 0)
+            {
+                // Adiciona nova coluna de idioma
+                header.Add(language);
+                lines[0] = SerializeRow(header);
+
+                for (int i = 1; i < lines.Count; i++)
+                {
+                    var cols = GetColumns(lines[i]);
+                    while (cols.Count < header.Count) cols.Add(string.Empty);
+                    lines[i] = SerializeRow(cols);
+                }
+                langIdx = header.Count - 1;
+            }
+
+            bool found = false;
+            for (int i = 1; i < lines.Count; i++)
+            {
+                var cols = GetColumns(lines[i]);
+                if (cols.Count > 1 && string.Equals(cols[1], key, StringComparison.Ordinal))
+                {
+                    while (cols.Count <= langIdx) cols.Add(string.Empty);
+                    cols[langIdx] = value;
+                    lines[i] = SerializeRow(cols);
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                var newCols = new List<string>(header.Count);
+                for (int c = 0; c < header.Count; c++) newCols.Add(string.Empty);
+                newCols[1] = key;          // Key
+                newCols[langIdx] = value;  // Valor do idioma
+                lines.Add(SerializeRow(newCols));
+            }
+
+            var newCsv = string.Join("\n", lines);
+
+            if (_runtimeCsvOverride == null)
+                _runtimeCsvOverride = new Dictionary<string, string>();
+
+            _runtimeCsvOverride[sheetName] = newCsv;
+
+            // Persiste para disco/IndexedDB via hook injetado pelo downloader
+            RuntimeCsvPersistenceHook?.Invoke(sheetName, newCsv);
+
+            // Recarrega tudo para refletir no cache do LocalizationManager
+            ReloadAll();
+        }
+
+        // --- CSV helpers ---
+
         public static List<string> GetLines(string text)
         {
+            if (string.IsNullOrEmpty(text)) return new List<string>();
+
             text = text.Replace("\r\n", "\n").Replace("\"\"", "[_quote_]");
-            
             var matches = Regex.Matches(text, "\"[\\s\\S]+?\"");
 
             foreach (Match match in matches)
             {
-                text = text.Replace(match.Value, match.Value.Replace("\"", null).Replace(",", "[_comma_]").Replace("\n", "[_newline_]"));
+                text = text.Replace(
+                    match.Value,
+                    match.Value.Replace("\"", null)
+                               .Replace(",", "[_comma_]")
+                               .Replace("\n", "[_newline_]")
+                );
             }
 
-            // Making uGUI line breaks to work in asian texts.
-            text = text.Replace("。", "。 ").Replace("、", "、 ").Replace("：", "： ").Replace("！", "！ ").Replace("（", " （").Replace("）", "） ").Trim();
+            // Espaços em idiomas CJK (mantendo sua lógica original)
+            text = text.Replace("。", "。 ")
+                       .Replace("、", "、 ")
+                       .Replace("：", "： ")
+                       .Replace("！", "！ ")
+                       .Replace("（", " （")
+                       .Replace("）", "） ")
+                       .Trim();
 
             return text.Split('\n').Where(i => i != "").ToList();
         }
 
         public static List<string> GetColumns(string line)
         {
-            return line.Split(',').Select(j => j.Trim()).Select(j => j.Replace("[_quote_]", "\"").Replace("[_comma_]", ",").Replace("[_newline_]", "\n")).ToList();
+            return line.Split(',')
+                       .Select(j => j.Trim())
+                       .Select(j => j.Replace("[_quote_]", "\"")
+                                     .Replace("[_comma_]", ",")
+                                     .Replace("[_newline_]", "\n"))
+                       .ToList();
+        }
+
+        private static string SerializeRow(List<string> cols)
+        {
+            string Escape(string s)
+            {
+                if (s == null) return "";
+                bool needQuote = s.Contains(",") || s.Contains("\"") || s.Contains("\n") || s.Contains("\r");
+                if (needQuote)
+                {
+                    s = s.Replace("\"", "\"\"");
+                    return $"\"{s}\"";
+                }
+                return s;
+            }
+
+            for (int i = 0; i < cols.Count; i++)
+                cols[i] = Escape(cols[i]);
+
+            return string.Join(",", cols);
         }
     }
 }
+ 
