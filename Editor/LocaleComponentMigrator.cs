@@ -22,7 +22,7 @@ namespace FineLocalization.Editor
         private static readonly string[] SearchInAssets = new[] { "Assets" };
         private const string OldFullTypeName = "Localization.LocaleComponent";
 
-        [MenuItem("Tools/FineLocalization/Migrate Simple to Fine")]
+        [MenuItem("Tools/◆ Fine Localization/Migrate Simple to Fine")]
         public static void ShowWindow()
         {
             GetWindow<LocaleComponentMigrator>("Locale Component Migrator");
