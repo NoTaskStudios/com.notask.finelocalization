@@ -38,8 +38,6 @@ namespace FineLocalization.Editor
         {
             LocalizationSettings.OnRunEditor += Open;
         }
-
-        [MenuItem("Window/◆ Simple Localization/Editor [PRO]")]
         public static void Open()
         {
             if (_window == null)
@@ -55,7 +53,7 @@ namespace FineLocalization.Editor
 
         public void OnGUI()
         {
-            if (Settings.Sheets.Count == 0 || Editor.SheetNames.Count == 0 || string.IsNullOrEmpty(Settings.TableId) || Settings.SaveFolder == null)
+            if (Settings.Sources.Count == 0 || Editor.SheetNames.Count == 0 || Settings.SaveFolder == null)
             {
                 Close();
 
@@ -299,12 +297,15 @@ namespace FineLocalization.Editor
 
             if (GUILayout.Button("❖ Open Sheets", GUILayout.MinWidth(MinColumnWidth + ButtonsColumnSizeFix), GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix)))
             {
-                Settings.OpenGoogleSheets();
-            }
-
-            if (GUILayout.Button("★ Leave Review", GUILayout.MinWidth(MinColumnWidth + ButtonsColumnSizeFix), GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix)))
-            {
-                Settings.LeaveReview();
+                var source = FindSourceForSheet(SheetName);
+                if (source != null && !string.IsNullOrEmpty(source.TableId))
+                {
+                    Application.OpenURL(string.Format(Constants.TableUrlPattern, source.TableId));
+                }
+                else
+                {
+                    Debug.LogWarning($"[FineLocalization] Could not find TableId for sheet: {SheetName}");
+                }
             }
 
             GUILayout.EndHorizontal();
@@ -342,6 +343,12 @@ namespace FineLocalization.Editor
             GUILayout.Label($"Pending submit of {Editor.KeysActions.Count} changes", new GUIStyle { normal = { textColor = Color.gray } });
             GUILayout.EndHorizontal();
         }
+        
+        private LocalizationSource FindSourceForSheet(string sheetName)
+        {
+            return Settings.Sources.FirstOrDefault(source => source.Sheets.Any(sheet => sheet.Name == sheetName));
+        }
+
 
         public static bool IsPro()
         {
@@ -382,7 +389,15 @@ namespace FineLocalization.Editor
 
             Editor.PrevKey = Editor.CurrentKey;
 
-            yield return LocalizationUtils.SubmitChanges(rows, SheetId, Settings.TableId, Constants.LocalizationEditorUrl, () => success = true);
+            var source = FindSourceForSheet(SheetName);
+            if (source == null)
+            {
+                Debug.LogError($"[FineLocalization] Could not find TableId for sheet: {SheetName}");
+                yield break;
+            }
+
+            yield return LocalizationUtils.SubmitChanges(rows, SheetId, source.TableId, Constants.LocalizationEditorUrl, () => success = true);
+
 
             if (!success)
             {

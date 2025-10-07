@@ -20,43 +20,53 @@ namespace FineLocalization.Editor
         public string PrevKey = "";
 
         public static LocalizationEditor Instance => _instance ??= new LocalizationEditor();
-
         private static LocalizationEditor _instance;
 
         private static LocalizationSettings Settings => LocalizationSettings.Instance;
-        
-        private static string SheetFileName(string sheetName) => AssetDatabase.GetAssetPath(Settings.SaveFolder) + "/" + sheetName + ".csv";
+
+        private static string SheetFileName(string sheetName)
+        {
+            return Path.Combine(AssetDatabase.GetAssetPath(Settings.SaveFolder), sheetName + ".csv");
+        }
 
         public void LoadSetting()
         {
             SheetNames.Clear();
             SheetIds.Clear();
 
-            Settings.Sheets.ForEach(i =>
+            foreach (var source in Settings.Sources)
             {
-                SheetNames.Add(i.Name);
-                SheetIds.Add(i.Id);
-            });
+                foreach (var sheet in source.Sheets)
+                {
+                    SheetNames.Add(sheet.Name);
+                    SheetIds.Add(sheet.Id);
+                }
+            }
         }
 
         public bool ReadSorted(string sheetName)
         {
+            var skip = LocalizationSettings.Instance.skip;
             SheetDictionary.Clear();
 
             var fileName = SheetFileName(sheetName);
 
             if (!File.Exists(fileName))
             {
-                if (EditorUtility.DisplayDialog("Error", $"File not found: {fileName}!\nPlease check your Settings and download sheets.", "OK"))
-                {
-                    return false;
-                }
+                EditorUtility.DisplayDialog("Error", $"File not found: {fileName}!\nPlease check your Settings and download sheets.", "OK");
+                return false;
             }
 
             var lines = LocalizationManager.GetLines(File.ReadAllText(fileName));
+            if (lines.Count == 0)
+            {
+                EditorUtility.DisplayDialog("Error", $"CSV file is empty: {fileName}", "OK");
+                return false;
+            }
+
             var languages = lines[0].Split(',').Select(i => i.Trim()).ToList();
 
-            for (var i = 1; i < languages.Count; i++)
+            for (var i = skip; i < languages.Count; i++)
             {
                 if (!SheetDictionary.ContainsKey(languages[i]))
                 {
@@ -64,16 +74,25 @@ namespace FineLocalization.Editor
                 }
             }
 
-            for (var i = 1; i < lines.Count; i++)
+            for (var i = 2; i < lines.Count; i++)
             {
                 var columns = LocalizationManager.GetColumns(lines[i]);
-                var key = columns[0];
+                if (columns.Count == 0) continue;
 
-                if (key == "") continue;
+                var key = columns[1];
+                if (string.IsNullOrWhiteSpace(key)) continue;
 
-                for (var j = 1; j < languages.Count; j++)
+                for (var j = 2; j < languages.Count; j++)
                 {
-                    SheetDictionary[languages[j]].Add(key, columns[j]);
+                    if (j >= columns.Count) continue;
+
+                    var lang = languages[j];
+                    var value = columns[j];
+
+                    if (!SheetDictionary.ContainsKey(lang))
+                        SheetDictionary[lang] = new SortedDictionary<string, string>();
+
+                    SheetDictionary[lang][key] = value;
                 }
             }
 
@@ -82,7 +101,9 @@ namespace FineLocalization.Editor
 
         public bool IsNewKey(string key)
         {
-            return SheetDictionary.FirstOrDefault().Value.ContainsKey(key) && KeysActions.ContainsKey(key) && KeysActions[key] == ActionType.Add;
+            return SheetDictionary.FirstOrDefault().Value.ContainsKey(key) &&
+                   KeysActions.ContainsKey(key) &&
+                   KeysActions[key] == ActionType.Add;
         }
 
         public string DeleteKey(string key)
@@ -95,13 +116,9 @@ namespace FineLocalization.Editor
             else
             {
                 if (KeysActions.ContainsKey(key))
-                {
                     KeysActions[key] = ActionType.Delete;
-                }
                 else
-                {
                     KeysActions.Add(key, ActionType.Delete);
-                }
             }
 
             foreach (var language in SheetDictionary.Keys)
@@ -115,7 +132,6 @@ namespace FineLocalization.Editor
         public string AddKey()
         {
             var key = $"New_key_{Guid.NewGuid().ToString().Substring(0, 8)}";
-
             Keys.Add(key, key);
 
             foreach (var language in SheetDictionary.Keys)
@@ -124,13 +140,12 @@ namespace FineLocalization.Editor
             }
 
             KeysActions.Add(key, ActionType.Add);
-
             return key;
         }
-        
+
         public void ResetSheet()
         {
-            CurrentKey = PrevKey != "" ? Keys[PrevKey] : PrevKey;
+            CurrentKey = PrevKey != "" && Keys.ContainsKey(PrevKey) ? Keys[PrevKey] : "";
             SheetDictionary.Clear();
             Keys.Clear();
             KeysActions.Clear();
@@ -141,11 +156,12 @@ namespace FineLocalization.Editor
         {
             if (Keys.Count != 0) return;
 
-            var first = SheetDictionary.First();
+            var first = SheetDictionary.FirstOrDefault();
+            if (first.Value == null) return;
 
-            foreach (var keys in first.Value.Keys)
+            foreach (var key in first.Value.Keys)
             {
-                Keys.Add(keys, keys);
+                Keys.Add(key, key);
             }
         }
     }
