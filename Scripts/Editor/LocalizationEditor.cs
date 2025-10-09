@@ -50,7 +50,6 @@ namespace FineLocalization.Editor
             SheetDictionary.Clear();
 
             var fileName = SheetFileName(sheetName);
-
             if (!File.Exists(fileName))
             {
                 EditorUtility.DisplayDialog("Error", $"File not found: {fileName}!\nPlease check your Settings and download sheets.", "OK");
@@ -63,29 +62,27 @@ namespace FineLocalization.Editor
                 EditorUtility.DisplayDialog("Error", $"CSV file is empty: {fileName}", "OK");
                 return false;
             }
-
+            
             var languages = lines[0].Split(',').Select(i => i.Trim()).ToList();
-
-            for (var i = skip; i < languages.Count; i++)
+            
+            for (var i = skip + 1; i < languages.Count; i++)
             {
-                if (!SheetDictionary.ContainsKey(languages[i]))
-                {
-                    SheetDictionary.Add(languages[i], new SortedDictionary<string, string>());
-                }
+                var lang = languages[i];
+                if (!SheetDictionary.ContainsKey(lang))
+                    SheetDictionary.Add(lang, new SortedDictionary<string, string>());
             }
-
+            
             for (var i = 2; i < lines.Count; i++)
             {
                 var columns = LocalizationManager.GetColumns(lines[i]);
-                if (columns.Count == 0) continue;
-
-                var key = columns[1];
+                if (columns.Count <= skip) continue;
+                
+                var keyIndex = skip;
+                var key = columns[keyIndex];
                 if (string.IsNullOrWhiteSpace(key)) continue;
-
-                for (var j = 2; j < languages.Count; j++)
+                
+                for (var j = skip + 1; j < languages.Count && j < columns.Count; j++)
                 {
-                    if (j >= columns.Count) continue;
-
                     var lang = languages[j];
                     var value = columns[j];
 
