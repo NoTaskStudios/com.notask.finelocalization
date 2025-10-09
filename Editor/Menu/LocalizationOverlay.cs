@@ -9,7 +9,8 @@ using UnityEngine.UIElements;
 
 namespace FineLocalization.Editor.Menu
 {
-    [Overlay(typeof(SceneView), "Fine Localization", true), Icon("Assets/FineLocalization/Editor/Icons/translate.png")]
+    [Overlay(typeof(SceneView), "Fine Localization", true), Icon("Packages/com.notask.fineLocalization/Editor/Icons/translate.png")]
+
     public class LocalizationOverlay : Overlay
     {
         private Texture icon { get; set; }
