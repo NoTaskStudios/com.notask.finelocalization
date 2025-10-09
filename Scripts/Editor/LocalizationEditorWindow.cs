@@ -267,10 +267,10 @@ namespace FineLocalization.Editor
                 }
             }
 
-            if (GUILayout.Button("Auto Translate", GUILayout.MinWidth(MinColumnWidth + ButtonsColumnSizeFix), GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix)))
-            {
-                EditorCoroutineUtility.StartCoroutine(new LocalizedTranslate().TranslateAuto(), this);
-            }
+            // if (GUILayout.Button("Auto Translate", GUILayout.MinWidth(MinColumnWidth + ButtonsColumnSizeFix), GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix)))
+            // {
+            //     EditorCoroutineUtility.StartCoroutine(new LocalizedTranslate().TranslateAuto(), this);
+            // }
 
             GUILayout.EndHorizontal();
 
