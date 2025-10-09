@@ -23,7 +23,7 @@ namespace FineLocalization.Runtime
         public List<LocalizationSource> Sources = new();
         public UnityEngine.Object SaveFolder;
         
-        public int skip = 4;
+        public int skip = 0;
         public static string UrlPattern = "https://docs.google.com/spreadsheets/d/{0}/export?format=csv&gid={1}";
         public static DateTime Timestamp;
 
