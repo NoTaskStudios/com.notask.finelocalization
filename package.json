@@ -1,7 +1,7 @@
 {
   "name": "com.notask.finelocalization",
   "displayName": "Fine Localization",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "Davy Woolley",
   "unity": "2019.2",
   "description": "Fine Localization provides all the necessary tools and runtime components for multi-language translation in Unity.",
