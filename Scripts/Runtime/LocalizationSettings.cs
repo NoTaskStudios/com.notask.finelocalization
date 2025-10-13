@@ -41,23 +41,37 @@ namespace FineLocalization.Runtime
 
         private static LocalizationSettings LoadSettings()
         {
-            const string path = @"Assets/FineLocalization/Resources/LocalizationSettings.asset";
-            var settings = Resources.Load<LocalizationSettings>(Path.GetFileNameWithoutExtension(path));
+            const string folderPath = "Assets/FineLocalization/Resources";
+            const string assetPath = folderPath + "/LocalizationSettings.asset";
+            
+#if UNITY_EDITOR
+            if (!Directory.Exists(folderPath))
+            {
+                Directory.CreateDirectory(folderPath);
+                AssetDatabase.Refresh();
+            }
+#endif
+            
+            var settings = Resources.Load<LocalizationSettings>("LocalizationSettings");
 
 #if UNITY_EDITOR
             if (settings == null)
             {
                 settings = CreateInstance<LocalizationSettings>();
-                AssetDatabase.CreateAsset(settings, path);
+                AssetDatabase.CreateAsset(settings, assetPath);
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
+
+                Debug.Log($"[FineLocalization] Created settings at: {assetPath}");
             }
 #else
-            if (settings == null)
-                throw new Exception($"Localization settings not found: {path}");
+    if (settings == null)
+        throw new Exception($"Localization settings not found at: {assetPath}");
 #endif
+
             return settings;
         }
+
 
 #if UNITY_EDITOR
 
