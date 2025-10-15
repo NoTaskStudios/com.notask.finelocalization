@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using com.notask.finelocalization.Scripts.Runtime.Utils;
 using FineLocalization.Runtime;
 using FineLocalization.Utils;
 using Unity.EditorCoroutines.Editor;
@@ -253,25 +254,7 @@ namespace FineLocalization.Editor
             EditorGUILayout.LabelField("Key:", GUILayout.MinWidth(MinColumnWidth + ButtonsColumnSizeFix), GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix));
             selectedKeyArrayIndex = EditorGUILayout.Popup(selectedKeyArrayIndex, valuesArray, GUILayout.MinWidth(MinColumnWidth + ButtonsColumnSizeFix), GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix));
             Editor.CurrentKey = keysArray.Length == 0 ? "" : keysArray[selectedKeyArrayIndex];
-
-            if (GUILayout.Button("Add Key", GUILayout.MinWidth(MinColumnWidth + ButtonsColumnSizeFix), GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix)))
-            {
-                Editor.CurrentKey = Editor.AddKey();
-            }
-
-            if (GUILayout.Button("Delete Key", GUILayout.MinWidth(MinColumnWidth + ButtonsColumnSizeFix), GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix)))
-            {
-                if (EditorUtility.DisplayDialog("Simple Localization", "Do you want to delete this key?", "Yes", "No"))
-                {
-                    Editor.CurrentKey = Editor.DeleteKey(Editor.CurrentKey);
-                }
-            }
-
-            // if (GUILayout.Button("Auto Translate", GUILayout.MinWidth(MinColumnWidth + ButtonsColumnSizeFix), GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix)))
-            // {
-            //     EditorCoroutineUtility.StartCoroutine(new LocalizedTranslate().TranslateAuto(), this);
-            // }
-
+            
             GUILayout.EndHorizontal();
 
             bool IsDeleted(string key)
@@ -353,12 +336,6 @@ namespace FineLocalization.Editor
         public static bool IsPro()
         {
             if (Constants.LocalizationEditorUrl != "") return true;
-
-            if (EditorUtility.DisplayDialog("SimpleLocalization", "This feature is available in the PRO version only!\nOpen a store website with it?", "Yes", "No"))
-            {
-                Application.OpenURL(Constants.AssetUrlPro);
-            }
-
             return false;
         }
 
