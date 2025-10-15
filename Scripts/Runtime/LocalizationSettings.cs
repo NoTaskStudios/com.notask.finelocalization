@@ -11,6 +11,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 
 #if UNITY_EDITOR
+using com.notask.finelocalization.Scripts.Runtime.Utils;
 using UnityEditor;
 using Unity.EditorCoroutines.Editor;
 #endif
@@ -22,8 +23,8 @@ namespace FineLocalization.Runtime
     {
         public List<LocalizationSource> Sources = new();
         public UnityEngine.Object SaveFolder;
-        
         public int skip = 0;
+        
         public static string UrlPattern = "https://docs.google.com/spreadsheets/d/{0}/export?format=csv&gid={1}";
         public static DateTime Timestamp;
 
@@ -41,23 +42,53 @@ namespace FineLocalization.Runtime
 
         private static LocalizationSettings LoadSettings()
         {
-            const string path = @"Assets/FineLocalization/Resources/LocalizationSettings.asset";
-            var settings = Resources.Load<LocalizationSettings>(Path.GetFileNameWithoutExtension(path));
+            const string folderPath = "Assets/FineLocalization/Resources";
+            const string settingsPath = folderPath + "/LocalizationSettings.asset";
+            const string localizationFolderPath = folderPath + "/Localization";
+
+#if UNITY_EDITOR
+            // Garante a existência das pastas
+            if (!AssetDatabase.IsValidFolder("Assets/FineLocalization"))
+                AssetDatabase.CreateFolder("Assets", "FineLocalization");
+
+            if (!AssetDatabase.IsValidFolder(folderPath))
+                AssetDatabase.CreateFolder("Assets/FineLocalization", "Resources");
+
+            if (!AssetDatabase.IsValidFolder(localizationFolderPath))
+                AssetDatabase.CreateFolder(folderPath, "Localization");
+#endif
+
+            // Tenta carregar o asset
+            var settings = Resources.Load<LocalizationSettings>("LocalizationSettings");
 
 #if UNITY_EDITOR
             if (settings == null)
             {
                 settings = CreateInstance<LocalizationSettings>();
-                AssetDatabase.CreateAsset(settings, path);
+
+                // Cria o asset fora do package
+                AssetDatabase.CreateAsset(settings, settingsPath);
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
+
+                Debug.Log($"[FineLocalization] Criado novo LocalizationSettings em: {settingsPath}");
+            }
+
+            // Garante que a pasta SaveFolder aponte corretamente
+            if (settings.SaveFolder == null)
+            {
+                settings.SaveFolder = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(localizationFolderPath);
+                EditorUtility.SetDirty(settings);
+                AssetDatabase.SaveAssets();
             }
 #else
-            if (settings == null)
-                throw new Exception($"Localization settings not found: {path}");
+    if (settings == null)
+        throw new Exception($"Localization settings não encontrado em: {settingsPath}");
 #endif
+
             return settings;
         }
+
 
 #if UNITY_EDITOR
 
