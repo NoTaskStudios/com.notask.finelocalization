@@ -7,6 +7,7 @@ namespace FineLocalization.Runtime
     {
         [SerializeField] private string key;
         [SerializeField] private TMP_Text text;
+        [SerializeField] private bool shouldAlign;
 
         private void Awake()
         {
@@ -17,6 +18,9 @@ namespace FineLocalization.Runtime
         private void SetText()
         {
             if (!text) text = GetComponent<TMP_Text>();
+
+            HandleJustified();
+            
             text.SetText(LocalizationManager.Localize(key));
         }
         
@@ -25,12 +29,22 @@ namespace FineLocalization.Runtime
             key = newKey;
             SetText();
         }
+        
+        private void HandleJustified()
+        {
+            if (!shouldAlign) return;
+
+            var languageThai = "th-th";
+            
+            text.alignment = LocalizationManager.Language.Equals(languageThai) ?
+                             text.alignment = TextAlignmentOptions.Left : 
+                             text.alignment = TextAlignmentOptions.Justified;
+        }
 
 #if UNITY_EDITOR
         private void OnValidate()
         {
             if (!text) text = GetComponent<TMP_Text>();
-            //text.SetText(string.Empty);
         }
 #endif
     }
