@@ -10,11 +10,8 @@ namespace FineLocalization.Runtime
             var languages = LocalizationManager.Dictionary;
             string lang = language;
             string[] division = lang.Split('-');
-            if (division.Length == 1)
+            if (!languages.ContainsKey(lang))
                 lang = CheckIfContainsLanguage(division[0], languages);
-            else if (!languages.ContainsKey(lang)) 
-                lang = LocalizationManager.Language;
-
             return lang;
         }
 
@@ -32,3 +29,4 @@ namespace FineLocalization.Runtime
         }
     }
 }
+ 
