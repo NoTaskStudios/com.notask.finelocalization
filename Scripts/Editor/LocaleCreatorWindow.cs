@@ -5,7 +5,7 @@ using FineLocalization.Runtime;
 using UnityEditor;
 using UnityEngine;
 
-namespace OpaGames.Editor.Build
+namespace FineLocalization.Editor.Build
 {
     public class LocaleCreatorWindow : EditorWindow
     {
