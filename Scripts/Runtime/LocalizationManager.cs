@@ -189,12 +189,11 @@ namespace FineLocalization.Runtime
                 throw new KeyNotFoundException("Language not found: " + Language);
 
             var exists = Dictionary[Language].TryGetValue(localizationKey, out var value);
-            var missed = !exists || string.IsNullOrEmpty(value);
 
-            if (missed)
+            if (!exists || string.IsNullOrEmpty(value))
             {
-                Debug.LogWarning($"[Fine Localization] Translation not found: {localizationKey} ({Language} - {value}).");
-                return exists ? value : localizationKey;
+                Debug.LogWarning($"[Fine Localization] Translation not found: {localizationKey} ({Language}).");
+                return localizationKey; // <-- sempre retorna a key como fallback
             }
 
             return value;
