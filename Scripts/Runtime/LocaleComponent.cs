@@ -23,6 +23,11 @@ namespace FineLocalization.Runtime
             
             text.SetText(LocalizationManager.Localize(key));
         }
+
+        private void OnDestroy()
+        {
+            LocalizationManager.OnLocalizationChanged -= SetText;
+        }
         
         public void ChangeKey(string newKey)
         {
