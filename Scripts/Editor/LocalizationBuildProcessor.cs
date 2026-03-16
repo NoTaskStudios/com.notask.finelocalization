@@ -15,29 +15,22 @@ namespace FineLocalization.Editor
         public void OnPreprocessBuild(BuildReport report)
         {
             var settings = LocalizationSettings.Instance;
-            var isDev = (report.summary.options & BuildOptions.Development) != 0;
-            var expectedMode = isDev ? LocalizationMode.Development : LocalizationMode.Production;
+            var settingsLabel = settings.Mode == LocalizationMode.Development ? "Development" : "Production";
 
-            if (settings.Mode != expectedMode)
+            var choice = EditorUtility.DisplayDialogComplex(
+                "Planilha de Tradução",
+                $"Qual planilha de tradução deseja usar nesta build?\n\nAtual: {settingsLabel}",
+                $"Usar Development",
+                $"Usar Production",
+                ""
+            );
+
+            if (choice == 1)
             {
-                var modeLabel = isDev ? "Development" : "Production";
-                var settingsLabel = settings.Mode == LocalizationMode.Development ? "Development" : "Production";
-
-                var choice = EditorUtility.DisplayDialogComplex(
-                    "Planilha de Tradução",
-                    $"Qual planilha de tradução deseja usar nesta build?\n\nAtual: {settingsLabel}",
-                    $"Usar {settingsLabel}",
-                    $"Usar {modeLabel}",
-                    ""
-                );
-
-                if (choice == 1)
-                {
-                    settings.Mode = expectedMode;
-                    EditorUtility.SetDirty(settings);
-                    AssetDatabase.SaveAssets();
-                    Debug.Log($"[FineLocalization] Planilha alterada para: {expectedMode}");
-                }
+                settings.Mode = expectedMode;
+                EditorUtility.SetDirty(settings);
+                AssetDatabase.SaveAssets();
+                Debug.Log($"[FineLocalization] Planilha alterada para: {expectedMode}");
             }
 
             var activeSources = settings.GetActiveSources();
