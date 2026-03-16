@@ -54,7 +54,7 @@ namespace FineLocalization.Editor
 
         public void OnGUI()
         {
-            if (Settings.Sources.Count == 0 || Editor.SheetNames.Count == 0 || Settings.SaveFolder == null)
+            if (Settings.GetActiveSources().Count == 0 || Editor.SheetNames.Count == 0 || Settings.SaveFolder == null)
             {
                 Close();
 
@@ -329,7 +329,7 @@ namespace FineLocalization.Editor
         
         private LocalizationSource FindSourceForSheet(string sheetName)
         {
-            return Settings.Sources.FirstOrDefault(source => source.Sheets.Any(sheet => sheet.Name == sheetName));
+            return Settings.GetActiveSources().FirstOrDefault(source => source.Sheets.Any(sheet => sheet.Name == sheetName));
         }
 
 

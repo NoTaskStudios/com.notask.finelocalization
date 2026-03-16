@@ -78,7 +78,7 @@ namespace FineLocalization.Runtime
             var keys = new HashSet<string>(); // evita duplicidade global de chave
             var settings = LocalizationSettings.Instance;
 
-            foreach (var source in settings.Sources)
+            foreach (var source in settings.GetActiveSources())
             {
                 foreach (var sheet  in source.Sheets)
                 {

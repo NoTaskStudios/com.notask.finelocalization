@@ -46,9 +46,10 @@ namespace FineLocalization.Scripts.Runtime
 
         public IEnumerator DownloadSheetsRuntime()
         {
-            for (int s = 0; s < LocalizationSettings.Instance.Sources.Count; s++)
+            var activeSources = LocalizationSettings.Instance.GetActiveSources();
+            for (int s = 0; s < activeSources.Count; s++)
             {
-                var source = LocalizationSettings.Instance.Sources[s];
+                var source = activeSources[s];
                 if (string.IsNullOrEmpty(source.TableId) || source.Sheets.Count == 0)
                 {
                     Debug.LogError("[FineLocalization] Table Id ou Sheets estão vazios!");

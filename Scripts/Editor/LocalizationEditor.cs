@@ -34,7 +34,7 @@ namespace FineLocalization.Editor
             SheetNames.Clear();
             SheetIds.Clear();
 
-            foreach (var source in Settings.Sources)
+            foreach (var source in Settings.GetActiveSources())
             {
                 foreach (var sheet in source.Sheets)
                 {

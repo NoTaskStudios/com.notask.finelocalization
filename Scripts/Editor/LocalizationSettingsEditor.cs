@@ -10,6 +10,7 @@ namespace FineLocalization.Editor
         {
             var settings = (LocalizationSettings) target;
 
+            settings.DisplayMode();
             settings.DisplayHelp();
             DrawDefaultInspector();
             settings.DisplayButtons();

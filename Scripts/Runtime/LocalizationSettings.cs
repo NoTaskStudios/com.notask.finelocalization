@@ -21,7 +21,12 @@ namespace FineLocalization.Runtime
     [CreateAssetMenu(fileName = "LocalizationSettings", menuName = "◆ Simple Localization/Settings")]
     public class LocalizationSettings : ScriptableObject
     {
+        public enum LocalizationMode { Production, Development }
+        public LocalizationMode Mode = LocalizationMode.Production;
+        public List<LocalizationSource> GetActiveSources() => 
+        Mode == LocalizationMode.Development ? DevSources : Sources;
         public List<LocalizationSource> Sources = new();
+        public List<LocalizationSource> DevSources = new();
         public UnityEngine.Object SaveFolder;
         public int skip = 0;
         
