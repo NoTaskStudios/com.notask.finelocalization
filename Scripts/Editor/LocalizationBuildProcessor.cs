@@ -24,34 +24,28 @@ namespace FineLocalization.Editor
                 var settingsLabel = settings.Mode == LocalizationMode.Development ? "Development" : "Production";
 
                 var choice = EditorUtility.DisplayDialogComplex(
-                    "⚠️ FineLocalization Mode Incompatível",
-                    $"Build está como '{modeLabel}', mas FineLocalization Mode está como '{settingsLabel}'.\n\nO que deseja fazer?",
-                    $"Manter {settingsLabel}",
-                    "Cancelar Build",
-                    $"Trocar para {modeLabel}"
+                    "Planilha de Tradução",
+                    $"Qual planilha de tradução deseja usar nesta build?\n\nAtual: {settingsLabel}",
+                    $"Usar {settingsLabel}",
+                    $"Usar {modeLabel}",
+                    ""
                 );
 
                 if (choice == 1)
                 {
-                    SessionState.SetBool("FineLocalization.BuildCancelled", true);
-                    throw new BuildFailedException("[FineLocalization] Build cancelado pelo usuário.");
-                }
-
-                if (choice == 2)
-                {
                     settings.Mode = expectedMode;
                     EditorUtility.SetDirty(settings);
                     AssetDatabase.SaveAssets();
-                    Debug.Log($"[FineLocalization] Mode alterado para: {expectedMode}");
+                    Debug.Log($"[FineLocalization] Planilha alterada para: {expectedMode}");
                 }
             }
 
             var activeSources = settings.GetActiveSources();
 
             if (activeSources == null || activeSources.Count == 0)
-                throw new BuildFailedException($"[FineLocalization] '{settings.Mode}' Sources estão vazios! Configure antes de buildar.");
+                throw new BuildFailedException($"[FineLocalization] Planilha '{settings.Mode}' está vazia! Configure antes de buildar.");
 
-            Debug.Log($"[FineLocalization] Build iniciada com modo: {settings.Mode}");
+            Debug.Log($"[FineLocalization] Build usando planilha: {settings.Mode}");
         }
     }
 }
