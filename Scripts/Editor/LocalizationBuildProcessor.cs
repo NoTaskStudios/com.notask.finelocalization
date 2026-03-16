@@ -27,10 +27,9 @@ namespace FineLocalization.Editor
 
             if (choice == 1)
             {
-                settings.Mode = expectedMode;
                 EditorUtility.SetDirty(settings);
                 AssetDatabase.SaveAssets();
-                Debug.Log($"[FineLocalization] Planilha alterada para: {expectedMode}");
+                Debug.Log($"[FineLocalization] Planilha alterada para: {settingsLabel}");
             }
 
             var activeSources = settings.GetActiveSources();
@@ -38,7 +37,7 @@ namespace FineLocalization.Editor
             if (activeSources == null || activeSources.Count == 0)
                 throw new BuildFailedException($"[FineLocalization] Planilha '{settings.Mode}' está vazia! Configure antes de buildar.");
 
-            Debug.Log($"[FineLocalization] Build usando planilha: {settings.Mode}");
+            Debug.Log($"[FineLocalization] Build usando planilha: {settingsLabel}");
         }
     }
 }
