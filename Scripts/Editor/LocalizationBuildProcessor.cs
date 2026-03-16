@@ -13,18 +13,14 @@ namespace FineLocalization.Editor
 
         public void OnPreprocessBuild(BuildReport report)
         {
-            var activeSources = settings.GetActiveSources();
-            if (activeSources == null || activeSources.Count == 0)
-                throw new BuildFailedException($"[FineLocalization] '{settings.Mode}' Sources estão vazios!");
-
             var settings = LocalizationSettings.Instance;
             var isDev = (report.summary.options & BuildOptions.Development) != 0;
-            var expectedMode = isDev ? LocalizationSettings.LocalizationMode.Development : LocalizationSettings.LocalizationMode.Production;
+            var expectedMode = isDev ? LocalizationMode.Development : LocalizationMode.Production;
 
             if (settings.Mode != expectedMode)
             {
                 var modeLabel = isDev ? "Development" : "Production";
-                var settingsLabel = settings.Mode == LocalizationSettings.LocalizationMode.Development ? "Development" : "Production";
+                var settingsLabel = settings.Mode == LocalizationMode.Development ? "Development" : "Production";
 
                 var confirm = EditorUtility.DisplayDialog(
                     "⚠️ Localization Mode Mismatch",
