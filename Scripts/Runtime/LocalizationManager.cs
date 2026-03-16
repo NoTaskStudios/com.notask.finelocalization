@@ -147,7 +147,7 @@ namespace FineLocalization.Runtime
                         // Permite a mesma key em outros sheets; se quiser global único, mantenha esse HashSet:
                         if (keys.Contains(key))
                         {
-                            Debug.LogError($"[Fine Localization] Duplicated key `{key}` (sheet `{sheet.Name}`). Linha ignorada.");
+                            Debug.LogWarning($"[Fine Localization] key duplicada `{key}` (sheet `{sheet.Name}`). Linha ignorada.");
                             continue;
                         }
                         keys.Add(key);
@@ -160,7 +160,7 @@ namespace FineLocalization.Runtime
                             if (!Dictionary[lang].ContainsKey(key))
                                 Dictionary[lang].Add(key, value);
                             else
-                                Debug.LogError($"[Fine Localization] Duplicated key `{key}` para idioma `{lang}` em `{sheet.Name}`.");
+                                Debug.LogWarning($"[Fine Localization] key duplicada `{key}` para idioma `{lang}` em `{sheet.Name}`.");
                         }
                     }
                 }
