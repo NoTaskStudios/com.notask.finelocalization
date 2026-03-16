@@ -23,23 +23,35 @@ namespace FineLocalization.Editor
                 var modeLabel = isDev ? "Development" : "Production";
                 var settingsLabel = settings.Mode == LocalizationMode.Development ? "Development" : "Production";
 
-                var confirm = EditorUtility.DisplayDialog(
-                    "⚠️ Localization Mode Mismatch",
-                    $"Build está como '{modeLabel}', mas Localization Mode está como '{settingsLabel}'.\n\nDeseja continuar mesmo assim?",
-                    "Continuar",
-                    "Cancelar"
+                var choice = EditorUtility.DisplayDialogComplex(
+                    "⚠️ FineLocalization Mode Incompatível",
+                    $"Build está como '{modeLabel}', mas FineLocalization Mode está como '{settingsLabel}'.\n\nO que deseja fazer?",
+                    $"Manter {settingsLabel}",
+                    "Cancelar Build",
+                    $"Trocar para {modeLabel}"
                 );
 
-                if (!confirm)
-                    throw new BuildFailedException("Build cancelado: Localization Mode incompatível com o tipo de build.");
+                if (choice == 1)
+                {
+                    SessionState.SetBool("FineLocalization.BuildCancelled", true);
+                    throw new BuildFailedException("[FineLocalization] Build cancelado pelo usuário.");
+                }
+
+                if (choice == 2)
+                {
+                    settings.Mode = expectedMode;
+                    EditorUtility.SetDirty(settings);
+                    AssetDatabase.SaveAssets();
+                    Debug.Log($"[FineLocalization] Mode alterado para: {expectedMode}");
+                }
             }
 
             var activeSources = settings.GetActiveSources();
 
             if (activeSources == null || activeSources.Count == 0)
-                throw new BuildFailedException($"[Localization] '{settings.Mode}' Sources estão vazios! Configure antes de buildar.");
+                throw new BuildFailedException($"[FineLocalization] '{settings.Mode}' Sources estão vazios! Configure antes de buildar.");
 
-            Debug.Log($"[Localization] Build iniciada com modo: <b>{settings.Mode}</b>");
+            Debug.Log($"[FineLocalization] Build iniciada com modo: {settings.Mode}");
         }
     }
 }
