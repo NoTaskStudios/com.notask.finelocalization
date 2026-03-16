@@ -10,7 +10,7 @@ namespace FineLocalization.Editor
 {
     public class LocalizationBuildProcessor : IPreprocessBuildWithReport
     {
-        public int callbackOrder => 0;
+        public int callbackOrder => -1000;
 
         public void OnPreprocessBuild(BuildReport report)
         {
