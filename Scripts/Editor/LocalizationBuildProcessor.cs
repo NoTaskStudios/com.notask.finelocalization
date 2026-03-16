@@ -15,29 +15,25 @@ namespace FineLocalization.Editor
         public void OnPreprocessBuild(BuildReport report)
         {
             var settings = LocalizationSettings.Instance;
-            var settingsLabel = settings.Mode == LocalizationMode.Development ? "Development" : "Production";
 
             var choice = EditorUtility.DisplayDialogComplex(
                 "Planilha de Tradução",
-                $"Qual planilha de tradução deseja usar nesta build?\n\nAtual: {settingsLabel}",
-                $"Usar Development",
-                $"Usar Production",
+                "Qual planilha de tradução deseja usar nesta build?",
+                "Development",
+                "Production",
                 ""
             );
 
-            if (choice == 1)
-            {
-                EditorUtility.SetDirty(settings);
-                AssetDatabase.SaveAssets();
-                Debug.Log($"[FineLocalization] Planilha alterada para: {settingsLabel}");
-            }
+            settings.Mode = choice == 0 ? LocalizationMode.Development : LocalizationMode.Production;
+            EditorUtility.SetDirty(settings);
+            AssetDatabase.SaveAssets();
 
             var activeSources = settings.GetActiveSources();
 
             if (activeSources == null || activeSources.Count == 0)
                 throw new BuildFailedException($"[FineLocalization] Planilha '{settings.Mode}' está vazia! Configure antes de buildar.");
 
-            Debug.Log($"[FineLocalization] Build usando planilha: {settingsLabel}");
+            Debug.Log($"[FineLocalization] Build usando planilha: {settings.Mode}");
         }
     }
 }
