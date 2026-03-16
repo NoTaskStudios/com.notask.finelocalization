@@ -111,6 +111,30 @@ namespace FineLocalization.Runtime
             SaveFolder = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(@"Assets/FineLocalization/Resources/Localization");
         }
 
+        public void DisplayMode()
+        {
+            var prev = Mode;
+
+            var color = Mode == LocalizationMode.Development
+                ? new Color(1f, 0.85f, 0.3f)
+                : new Color(0.4f, 1f, 0.5f);
+
+            var originalColor = GUI.backgroundColor;
+            GUI.backgroundColor = color;
+
+            Mode = (LocalizationMode) EditorGUILayout.EnumPopup("🌐 FineLocalization Mode", Mode);
+
+            GUI.backgroundColor = originalColor;
+
+            if (prev != Mode)
+            {
+                EditorUtility.SetDirty(this);
+                AssetDatabase.SaveAssets();
+                Debug.Log($"[FineLocalization] Mode alterado para: {Mode}");
+            }
+        }
+
+
         public void DownloadGoogleSheets(Action callback = null)
         {
             EditorCoroutineUtility.StartCoroutineOwnerless(DownloadGoogleSheetsCoroutine(callback));
@@ -120,19 +144,19 @@ namespace FineLocalization.Runtime
         {
             if (Sources.Count == 0)
             {
-                EditorUtility.DisplayDialog("Error", "No Table Ids configured.", "OK");
+                EditorUtility.DisplayDialog("[FineLocalization] Error", "No Table Ids configured.", "OK");
                 yield break;
             }
 
             if (SaveFolder == null)
             {
-                EditorUtility.DisplayDialog("Error", "Save Folder is not set.", "OK");
+                EditorUtility.DisplayDialog("[FineLocalization] Error", "Save Folder is not set.", "OK");
                 yield break;
             }
 
             if ((DateTime.UtcNow - Timestamp).TotalSeconds < 2)
             {
-                if (EditorUtility.DisplayDialog("Message", "Too many requests! Try again later.", "OK"))
+                if (EditorUtility.DisplayDialog("[FineLocalization] Message", "Too many requests! Try again later.", "OK"))
                     yield break;
             }
 
@@ -172,12 +196,12 @@ namespace FineLocalization.Runtime
                         AssetDatabase.Refresh();
                         sheet.TextAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
                         EditorUtility.SetDirty(this);
-                        Debug.Log($"Sheet <color=yellow>{sheet.Name}</color> saved to <color=grey>{path}</color>");
+                        Debug.Log($"[FineLocalization] Sheet <color=yellow>{sheet.Name}</color> saved to <color=grey>{path}</color>");
                     }
                     else
                     {
                         EditorUtility.ClearProgressBar();
-                        EditorUtility.DisplayDialog("Error", error.Contains("404") ? "Invalid TableId." : error, "OK");
+                        EditorUtility.DisplayDialog("[FineLocalization] Error", error.Contains("404") ? "Invalid TableId." : error, "OK");
                         yield break;
                     }
                 }
@@ -189,7 +213,7 @@ namespace FineLocalization.Runtime
             callback?.Invoke();
 
             if (!silent)
-                EditorUtility.DisplayDialog("Message", $"{total} localization sheets downloaded!", "OK");
+                EditorUtility.DisplayDialog("[FineLocalization] Message", $"{total} localization sheets downloaded!", "OK");
 
             void ClearSaveFolder()
             {
@@ -210,27 +234,27 @@ namespace FineLocalization.Runtime
             {
                 if (string.IsNullOrEmpty(source.TableId))
                 {
-                    Debug.LogWarning("Skipped empty TableId.");
+                    Debug.LogWarning("[FineLocalization] Skipped empty TableId.");
                     continue;
                 }
 
                 var url = $"{Constants.SheetResolverUrl}?tableUrl={source.TableId}";
                 using var request = UnityWebRequest.Get(url);
 
-                EditorUtility.DisplayProgressBar("Resolving sheets...", $"Resolving {source.TableId}...", 1);
+                EditorUtility.DisplayProgressBar("[FineLocalization] Resolving sheets...", $"Resolving {source.TableId}...", 1);
                 yield return request.SendWebRequest();
                 EditorUtility.ClearProgressBar();
 
                 if (request.error != null)
                 {
-                    EditorUtility.DisplayDialog("Error", request.error, "OK");
+                    EditorUtility.DisplayDialog("[FineLocalization] Error", request.error, "OK");
                     continue;
                 }
 
                 var error = GetInternalError(request);
                 if (error != null)
                 {
-                    EditorUtility.DisplayDialog("Error", "Sheet not found or permission denied.", "OK");
+                    EditorUtility.DisplayDialog("[FineLocalization] Error", "Sheet not found or permission denied.", "OK");
                     continue;
                 }
 
@@ -243,7 +267,7 @@ namespace FineLocalization.Runtime
                     source.Sheets.Add(new Sheet { Id = item.Value, Name = item.Key });
                 }
 
-                EditorUtility.DisplayDialog("Message", $"[{source.TableId}] Sheets resolved: {string.Join(", ", source.Sheets.Select(i => i.Name))}.", "OK");
+                EditorUtility.DisplayDialog("[FineLocalization] Message", $"[{source.TableId}] Sheets resolved: {string.Join(", ", source.Sheets.Select(i => i.Name))}.", "OK");
             }
         }
 
