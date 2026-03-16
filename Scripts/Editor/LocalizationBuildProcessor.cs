@@ -4,6 +4,7 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 using FineLocalization.Runtime;
+using LocalizationMode = FineLocalization.Runtime.LocalizationMode;
 
 namespace FineLocalization.Editor
 {
