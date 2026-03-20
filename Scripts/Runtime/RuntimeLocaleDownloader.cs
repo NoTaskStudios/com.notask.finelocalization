@@ -23,6 +23,7 @@ namespace FineLocalization.Scripts.Runtime
             "https://docs.google.com/spreadsheets/d/{0}/export?format=csv&gid={1}";
 
         public static event Action<bool> OnDownloadLocalizationComplete = (success) => { };
+        public static event Action<bool> OnAllSheetsDownloadedComplete;
         private readonly Dictionary<string, string> _csvData = new();
         
         private void Start()
@@ -106,6 +107,8 @@ namespace FineLocalization.Scripts.Runtime
                 // Atualiza o LocalizationManager para usar os CSVs recém-baixados
                 LocalizationManager.LoadFromCsvMap(new Dictionary<string, string>(_csvData));
             }
+            
+            OnAllSheetsDownloadedComplete?.Invoke(_csvData.Count > 0);
         }
 
         /// <summary>
