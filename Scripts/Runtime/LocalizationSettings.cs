@@ -18,7 +18,7 @@ using Unity.EditorCoroutines.Editor;
 
 namespace FineLocalization.Runtime
 {
-    [CreateAssetMenu(fileName = "LocalizationSettings", menuName = "◆ Simple Localization/Settings")]
+    [CreateAssetMenu(fileName = "LocalizationSettings", menuName = "Fine Localization/Settings")]
     public class LocalizationSettings : ScriptableObject
     {
         public enum LocalizationMode { Production, Development }
