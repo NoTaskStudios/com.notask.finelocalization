@@ -159,8 +159,9 @@ namespace FineLocalization.Runtime
                     
                             if (!Dictionary[lang].ContainsKey(key))
                                 Dictionary[lang].Add(key, value);
-                            else
+                            else{
                                 //Debug.logWarning($"[Fine Localization] key duplicada `{key}` para idioma `{lang}` em `{sheet.Name}`.");
+                            }
                         }
                     }
                 }
