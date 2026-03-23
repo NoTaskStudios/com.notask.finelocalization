@@ -121,7 +121,8 @@ namespace FineLocalization.Editor
                 }
             }
 
-            if (showDetails) //Debug.log($"[FineLocalization] Prefabs: {count} componentes encontrados (Assets/)");
+            if (showDetails) {//Debug.log($"[FineLocalization] Prefabs: {count} componentes encontrados (Assets/)");
+            }
             return count;
         }
 
@@ -155,7 +156,8 @@ namespace FineLocalization.Editor
                 EditorSceneManager.CloseScene(scene, true);
             }
 
-            if (showDetails) //Debug.log($"[FineLocalization] Cenas: {count} componentes encontrados (Assets/)");
+            if (showDetails){ //Debug.log($"[FineLocalization] Cenas: {count} componentes encontrados (Assets/)");
+            }
             return count;
         }
 
