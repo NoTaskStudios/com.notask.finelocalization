@@ -287,7 +287,7 @@ namespace FineLocalization.Editor
                 }
                 else
                 {
-                    Debug.LogWarning($"[FineLocalization] Could not find TableId for sheet: {SheetName}");
+                    //Debug.logWarning($"[FineLocalization] Could not find TableId for sheet: {SheetName}");
                 }
             }
 
@@ -369,7 +369,7 @@ namespace FineLocalization.Editor
             var source = FindSourceForSheet(SheetName);
             if (source == null)
             {
-                Debug.LogError($"[FineLocalization] Could not find TableId for sheet: {SheetName}");
+                //Debug.logError($"[FineLocalization] Could not find TableId for sheet: {SheetName}");
                 yield break;
             }
 

@@ -20,7 +20,7 @@ namespace OPAGames.SimpleLocalization.Editor
             if (!forceLanguage) return;
             var lang = EditorPrefs.GetString("FineLocalization_SelectedLanguage", "en-us");
             LocalizationManager.Language = lang;
-            Debug.Log($"[Fine Localization] Force Language To: {lang} in Editor.");
+            //Debug.log($"[Fine Localization] Force Language To: {lang} in Editor.");
         }
     }
 }

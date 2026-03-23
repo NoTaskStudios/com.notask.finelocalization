@@ -81,7 +81,7 @@ namespace FineLocalization.Editor
         {
             foundComponents = 0;
 
-            Debug.Log("[FineLocalization] Escaneando componentes antigos (Localization.LocaleComponent) apenas em Assets/");
+            //Debug.log("[FineLocalization] Escaneando componentes antigos (Localization.LocaleComponent) apenas em Assets/");
 
             if (includePrefabs)
             {
@@ -93,7 +93,7 @@ namespace FineLocalization.Editor
                 foundComponents += ScanScenes();
             }
 
-            Debug.Log($"[FineLocalization] Varredura concluída: {foundComponents} componentes encontrados em Assets/.");
+            //Debug.log($"[FineLocalization] Varredura concluída: {foundComponents} componentes encontrados em Assets/.");
         }
 
         private int ScanPrefabs()
@@ -114,13 +114,14 @@ namespace FineLocalization.Editor
                     if (comp != null && comp.GetType().FullName == OldFullTypeName)
                     {
                         count++;
-                        if (showDetails)
-                            Debug.Log($"[FineLocalization] (Scan) Prefab: {path} -> {comp.gameObject.name}");
+                        if (showDetails){
+                            //Debug.log($"[FineLocalization] (Scan) Prefab: {path} -> {comp.gameObject.name}");
+                        }
                     }
                 }
             }
 
-            if (showDetails) Debug.Log($"[FineLocalization] Prefabs: {count} componentes encontrados (Assets/)");
+            if (showDetails) //Debug.log($"[FineLocalization] Prefabs: {count} componentes encontrados (Assets/)");
             return count;
         }
 
@@ -144,8 +145,9 @@ namespace FineLocalization.Editor
                         if (comp != null && comp.GetType().FullName == OldFullTypeName)
                         {
                             count++;
-                            if (showDetails)
-                                Debug.Log($"[FineLocalization] (Scan) Cena: {scenePath} -> {comp.gameObject.name}");
+                            if (showDetails){
+                                //Debug.log($"[FineLocalization] (Scan) Cena: {scenePath} -> {comp.gameObject.name}");
+                            }
                         }
                     }
                 }
@@ -153,7 +155,7 @@ namespace FineLocalization.Editor
                 EditorSceneManager.CloseScene(scene, true);
             }
 
-            if (showDetails) Debug.Log($"[FineLocalization] Cenas: {count} componentes encontrados (Assets/)");
+            if (showDetails) //Debug.log($"[FineLocalization] Cenas: {count} componentes encontrados (Assets/)");
             return count;
         }
 
@@ -161,7 +163,7 @@ namespace FineLocalization.Editor
         {
             migratedComponents = 0;
 
-            Debug.Log("[FineLocalization] Iniciando migração (somente Assets/)");
+            //Debug.log("[FineLocalization] Iniciando migração (somente Assets/)");
 
             if (includePrefabs)
             {
@@ -176,7 +178,7 @@ namespace FineLocalization.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log($"[FineLocalization] Migração concluída: {migratedComponents} componentes migrados.");
+            //Debug.log($"[FineLocalization] Migração concluída: {migratedComponents} componentes migrados.");
         }
 
         private int MigratePrefabs()
@@ -217,8 +219,9 @@ namespace FineLocalization.Editor
                 if (modified)
                 {
                     PrefabUtility.SaveAsPrefabAsset(root, path);
-                    if (showDetails || true)
-                        Debug.Log($"[FineLocalization] Prefab migrado: {path}");
+                    if (showDetails || true){
+                        //Debug.log($"[FineLocalization] Prefab migrado: {path}");
+                    }
                 }
 
                 PrefabUtility.UnloadPrefabContents(root);
@@ -268,8 +271,9 @@ namespace FineLocalization.Editor
                 {
                     EditorSceneManager.MarkSceneDirty(scene);
                     EditorSceneManager.SaveScene(scene);
-                    if (showDetails || true)
-                        Debug.Log($"[FineLocalization] Cena migrada: {scenePath}");
+                    if (showDetails || true){
+                        //Debug.log($"[FineLocalization] Cena migrada: {scenePath}");
+                    }
                 }
             }
 
@@ -321,12 +325,12 @@ namespace FineLocalization.Editor
                 // 6) Marcar objeto alterado
                 EditorUtility.SetDirty(go);
 
-                Debug.Log($"[FineLocalization] Migrado: {go.name} (key: '{key}')");
+                //Debug.log($"[FineLocalization] Migrado: {go.name} (key: '{key}')");
                 return true;
             }
             catch (System.Exception e)
             {
-                Debug.LogError($"[FineLocalization] Erro ao migrar componente em {oldComponent.gameObject.name}: {e.Message}");
+                //Debug.logError($"[FineLocalization] Erro ao migrar componente em {oldComponent.gameObject.name}: {e.Message}");
                 return false;
             }
         }

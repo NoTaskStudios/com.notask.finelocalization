@@ -103,7 +103,7 @@ namespace FineLocalization.Runtime
                     var lines = GetLines(rawText);
                     if (lines.Count == 0)
                     {
-                        Debug.LogError($"[Fine Localization] Sheet `{sheet.Name}` está vazio.");
+                        //Debug.logError($"[Fine Localization] Sheet `{sheet.Name}` está vazio.");
                         continue;
                     }
                     
@@ -115,13 +115,13 @@ namespace FineLocalization.Runtime
                     
                     if (header.Count < 3)
                     {
-                        Debug.LogError($"[Fine Localization] Header inválido em `{sheet.Name}`. Esperado: Index,Key,<langs...>");
+                        //Debug.logError($"[Fine Localization] Header inválido em `{sheet.Name}`. Esperado: Index,Key,<langs...>");
                         continue;
                     }
                     
                     if (header.Count != header.Distinct(StringComparer.OrdinalIgnoreCase).Count())
                     {
-                        Debug.LogError($"[Fine Localization] Idiomas duplicados em `{sheet.Name}`. Sheet ignorado.");
+                        //Debug.logError($"[Fine Localization] Idiomas duplicados em `{sheet.Name}`. Sheet ignorado.");
                         continue;
                     }
 
@@ -147,7 +147,7 @@ namespace FineLocalization.Runtime
                         // Permite a mesma key em outros sheets; se quiser global único, mantenha esse HashSet:
                         if (keys.Contains(key))
                         {
-                            Debug.LogWarning($"[Fine Localization] key duplicada `{key}` (sheet `{sheet.Name}`). Linha ignorada.");
+                            //Debug.logWarning($"[Fine Localization] key duplicada `{key}` (sheet `{sheet.Name}`). Linha ignorada.");
                             continue;
                         }
                         keys.Add(key);
@@ -160,7 +160,7 @@ namespace FineLocalization.Runtime
                             if (!Dictionary[lang].ContainsKey(key))
                                 Dictionary[lang].Add(key, value);
                             else
-                                Debug.LogWarning($"[Fine Localization] key duplicada `{key}` para idioma `{lang}` em `{sheet.Name}`.");
+                                //Debug.logWarning($"[Fine Localization] key duplicada `{key}` para idioma `{lang}` em `{sheet.Name}`.");
                         }
                     }
                 }
@@ -192,7 +192,7 @@ namespace FineLocalization.Runtime
 
             if (!exists || string.IsNullOrEmpty(value))
             {
-                Debug.LogWarning($"[Fine Localization] Translation not found: {localizationKey} ({Language}).");
+                //Debug.logWarning($"[Fine Localization] Translation not found: {localizationKey} ({Language}).");
                 return localizationKey; // <-- sempre retorna a key como fallback
             }
 
@@ -244,7 +244,7 @@ namespace FineLocalization.Runtime
 
             if (string.IsNullOrWhiteSpace(currentCsv))
             {
-                Debug.LogError($"[Fine Localization] Não foi possível carregar CSV de `{sheetName}` para persistência.");
+                //Debug.logError($"[Fine Localization] Não foi possível carregar CSV de `{sheetName}` para persistência.");
                 return;
             }
 
@@ -252,14 +252,14 @@ namespace FineLocalization.Runtime
             var lines = GetLines(currentCsv);
             if (lines.Count == 0)
             {
-                Debug.LogError($"[Fine Localization] CSV vazio em `{sheetName}`.");
+                //Debug.logError($"[Fine Localization] CSV vazio em `{sheetName}`.");
                 return;
             }
 
             var header = GetColumns(lines[0]); // Index, Key, lang...
             if (header.Count < 2)
             {
-                Debug.LogError($"[Fine Localization] Header inválido em `{sheetName}`.");
+                //Debug.logError($"[Fine Localization] Header inválido em `{sheetName}`.");
                 return;
             }
 

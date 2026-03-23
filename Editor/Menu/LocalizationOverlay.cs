@@ -61,7 +61,7 @@ namespace FineLocalization.Editor.Menu
             }
             else
             {
-                Debug.LogWarning("[Fine Localization] Ícone não encontrado.");
+                //Debug.logWarning("[Fine Localization] Ícone não encontrado.");
             }
         }
     }

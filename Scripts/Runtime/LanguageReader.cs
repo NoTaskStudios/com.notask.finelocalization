@@ -24,7 +24,7 @@ namespace FineLocalization.Runtime
                 if (language != l) continue;
                 return lang;
             }
-            Debug.LogWarning("language key not found; using default");
+            //Debug.logWarning("language key not found; using default");
             return LocalizationManager.Language;
         }
     }

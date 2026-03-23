@@ -33,7 +33,7 @@ namespace FineLocalization.Editor
             if (activeSources == null || activeSources.Count == 0)
                 throw new BuildFailedException($"[FineLocalization] Planilha '{settings.Mode}' está vazia! Configure antes de buildar.");
 
-            Debug.Log($"[FineLocalization] Build usando planilha: {settings.Mode}");
+            //Debug.log($"[FineLocalization] Build usando planilha: {settings.Mode}");
         }
     }
 }
