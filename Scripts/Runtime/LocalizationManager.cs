@@ -125,7 +125,7 @@ namespace FineLocalization.Runtime
                         continue;
                     }
 
-                    var skip = LocalizationSettings.Instance.skip;
+                    var skip = settings.skip;
                     
                     // Cria dicionários por idioma (pula Index e Key)
                     for (var i = skip; i < header.Count; i++)
