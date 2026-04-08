@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
+using Object = UnityEngine.Object;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -27,7 +29,7 @@ namespace FineLocalization.Runtime
                 #if UNITY_EDITOR
                 return _instance ??= CreateSettingsPointer();
                 #else
-                if (_instance == null) new Exception($"LocalizationSettins pointer not found: {folderPath}/{pointerDefaultName}");
+                if (_instance == null) throw new Exception($"LocalizationSettins pointer not found: {folderPath}/{pointerDefaultName}");
                 #endif
                 return _instance;
             }
