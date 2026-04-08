@@ -4,7 +4,6 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 using FineLocalization.Runtime;
-using LocalizationMode = FineLocalization.Runtime.LocalizationSettings.LocalizationMode;
 
 namespace FineLocalization.Editor
 {
@@ -16,22 +15,16 @@ namespace FineLocalization.Editor
         {
             var settings = LocalizationSettings.Instance;
 
-            var choice = EditorUtility.DisplayDialogComplex(
-                "Planilha de Tradução",
-                "Qual planilha de tradução deseja usar nesta build?",
-                "Development",
-                "Production",
-                ""
-            );
-
-            settings.Mode = choice == 0 ? LocalizationMode.Development : LocalizationMode.Production;
-            EditorUtility.SetDirty(settings);
-            AssetDatabase.SaveAssets();
+            if (!EditorUtility.DisplayDialog(
+                    "Localization Settings"
+                    , $"Current LocalizationSettings is \"{settings.name}\", are you sure you want to build with this localization setting?"
+                    , "Yes", "No (Cancel build)"))
+                throw new BuildFailedException("Build cancelled (opted for changing localization)");
 
             var activeSources = settings.GetActiveSources();
 
             if (activeSources == null || activeSources.Count == 0)
-                throw new BuildFailedException($"[FineLocalization] Planilha '{settings.Mode}' está vazia! Configure antes de buildar.");
+                throw new BuildFailedException($"[FineLocalization] Planilha '{settings.name}' está vazia! Configure antes de buildar.");
 
             //Debug.log($"[FineLocalization] Build usando planilha: {settings.Mode}");
         }
