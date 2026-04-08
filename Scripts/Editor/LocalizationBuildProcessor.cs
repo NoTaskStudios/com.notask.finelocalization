@@ -15,7 +15,7 @@ namespace FineLocalization.Editor
         {
             var settings = LocalizationSettings.Instance;
 
-            if (!EditorDialog.DisplayDecisionDialog(
+            if (!EditorUtility.DisplayDialog(
                     "Localization Settings"
                     , $"Current LocalizationSettings is \"{settings.name}\", are you sure you want to build with this localization setting?"
                     , "Yes", "No (Cancel build)"))
