@@ -36,6 +36,7 @@ namespace FineLocalization.Editor
             {
                 currentOptionId = -1;
                 foundSettings = Resources.LoadAll<LocalizationSettings>("");
+                if (foundSettings is { Length: <= 0 }) foundSettings = new[] { CurrentSettingsPointer.CurrentSettings };
             }
             settingsOptions = new string[foundSettings.Length];
             for (int i = 0; i < settingsOptions.Length; i++)
