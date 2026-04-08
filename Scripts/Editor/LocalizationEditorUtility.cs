@@ -67,7 +67,10 @@ namespace FineLocalization.Editor
 
                     if (EditorUtility.DisplayCancelableProgressBar("Downloading sheets...",
                             $"[{(int)(progress * 100)}%] Downloading {sheet.Name}...", progress))
+                    {
+                        EditorUtility.ClearProgressBar();
                         yield break;
+                    }
 
                     yield return request.SendWebRequest();
 
