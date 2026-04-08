@@ -8,7 +8,7 @@ namespace FineLocalization.Editor
     [CustomEditor(typeof(LocalizationSettings))]
     public class LocalizationSettingsEditor : UnityEditor.Editor 
     {
-        private static LocalizationSettings settings;
+        private LocalizationSettings settings;
         
         public override void OnInspectorGUI()
         {
