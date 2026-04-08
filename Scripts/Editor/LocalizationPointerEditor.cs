@@ -8,9 +8,9 @@ namespace FineLocalization.Editor
     [CustomEditor(typeof(CurrentSettingsPointer))]
     public class LocalizationPointerEditor : UnityEditor.Editor
     {
-        private static LocalizationSettings[] foundSettings;
-        private static string[] settingsOptions = Array.Empty<string>();
-        private static int currentOptionId = 0;
+        private LocalizationSettings[] foundSettings;
+        private string[] settingsOptions = Array.Empty<string>();
+        private int currentOptionId = 0;
         
         public override void OnInspectorGUI()
         {
