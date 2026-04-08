@@ -56,7 +56,7 @@ namespace FineLocalization.Editor
 
             if (GUILayout.Button("↺ Resolve Sheets", buttonStyle)) settings.ResolveGoogleSheets();
             if (GUILayout.Button("▼ Download Sheets", buttonStyle)) settings.DownloadGoogleSheets();
-            if (GUILayout.Button("❖ Open Editor", buttonStyle)) LocalizationSettings.OnRunEditor();
+            if (GUILayout.Button("❖ Open Editor", buttonStyle)) LocalizationSettings.RaiseOnRunEditor();
         }
 
         private void DisplayWarnings()

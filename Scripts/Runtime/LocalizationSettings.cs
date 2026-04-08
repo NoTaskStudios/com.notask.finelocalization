@@ -23,9 +23,12 @@ namespace FineLocalization.Runtime
 
         public static LocalizationSettings Instance => CurrentSettingsPointer.CurrentSettings;
 
-        public static Action OnRunEditor = () => { };
+        public static event Action OnRunEditor;
 
         public List<LocalizationSource> GetActiveSources() => Sources; 
+        
+        public static void RaiseOnRunEditor() => OnRunEditor?.Invoke();
+        
         public void Reset()
         {
             Sources = new List<LocalizationSource>
