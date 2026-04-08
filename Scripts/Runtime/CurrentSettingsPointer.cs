@@ -78,9 +78,9 @@ namespace FineLocalization.Runtime
             var pointer = CreateInstance<CurrentSettingsPointer>();
             _instance = pointer;
             AssetDatabase.CreateAsset(pointer, pointerPath);
+            pointer.settings = CurrentSettings;
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            pointer.settings = currentSettings;
             return pointer;
         }
 
@@ -91,19 +91,15 @@ namespace FineLocalization.Runtime
 
             // Cria o asset fora do package
             AssetDatabase.CreateAsset(settings, settingsPath);
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
 
             //Debug.log($"[FineLocalization] Criado novo LocalizationSettings em: {settingsPath}");
 
             // Garante que a pasta SaveFolder aponte corretamente
-            if (settings.SaveFolder == null)
-            {
-                settings.SaveFolder = AssetDatabase.LoadAssetAtPath<Object>(localizationFolderPath);
-                EditorUtility.SetDirty(settings);
-                AssetDatabase.SaveAssets();
-            }
-            settingsPointer.settings = settings;
+            settings.SaveFolder = AssetDatabase.LoadAssetAtPath<Object>(localizationFolderPath);
+            SettingsPointer.settings = settings;
+            
+            EditorUtility.SetDirty(settings);
+            AssetDatabase.SaveAssets();
             return settings;
         }
 #endif
