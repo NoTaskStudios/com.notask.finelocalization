@@ -21,7 +21,7 @@ namespace FineLocalization.Runtime
         public static string UrlPattern = "https://docs.google.com/spreadsheets/d/{0}/export?format=csv&gid={1}";
         public static DateTime Timestamp;
 
-        public static LocalizationSettings Instance => CurrentSettingsPointer.currentSettings;
+        public static LocalizationSettings Instance => CurrentSettingsPointer.CurrentSettings;
 
         public static Action OnRunEditor = () => { };
 

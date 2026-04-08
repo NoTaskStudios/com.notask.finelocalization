@@ -19,7 +19,7 @@ namespace FineLocalization.Runtime
         public LocalizationSettings settings;
 
         private static CurrentSettingsPointer _instance;
-        public static CurrentSettingsPointer settingsPointer
+        public static CurrentSettingsPointer SettingsPointer
         {
             get
             {
@@ -33,11 +33,11 @@ namespace FineLocalization.Runtime
             }
         }
 
-        private static LocalizationSettings _settings => settingsPointer?.settings;
-        public static LocalizationSettings currentSettings
+        private static LocalizationSettings _settings => SettingsPointer?.settings;
+        public static LocalizationSettings CurrentSettings
         {
             get => _settings ?? LoadSettings();
-            set => settingsPointer.settings = value;
+            set => SettingsPointer.settings = value;
         }
 
         private static LocalizationSettings LoadSettings()

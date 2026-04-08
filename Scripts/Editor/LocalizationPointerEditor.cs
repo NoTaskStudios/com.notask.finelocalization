@@ -41,7 +41,7 @@ namespace FineLocalization.Editor
             for (int i = 0; i < settingsOptions.Length; i++)
             {
                 settingsOptions[i] = foundSettings[i].name;
-                if (currentOptionId > 0 || foundSettings[i] != CurrentSettingsPointer.currentSettings) continue;
+                if (currentOptionId > 0 || foundSettings[i] != CurrentSettingsPointer.CurrentSettings) continue;
                 currentOptionId = i;
             }
 

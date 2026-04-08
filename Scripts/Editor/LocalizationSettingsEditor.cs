@@ -23,7 +23,7 @@ namespace FineLocalization.Editor
 
         private void CurrentSettingsInfo()
         {
-            if (settings == CurrentSettingsPointer.currentSettings) return;
+            if (settings == CurrentSettingsPointer.CurrentSettings) return;
             var alertColor = new Color(1f, 0.85f, 0.3f);
             var originalColor = GUI.backgroundColor;
             GUIStyle style = new GUIStyle();
@@ -35,8 +35,8 @@ namespace FineLocalization.Editor
             EditorGUILayout.LabelField("<b>This LocalizationSettings is not the currently used LocalizationSettings", style);
             if (GUILayout.Button("Use it as current settings"))
             {
-                CurrentSettingsPointer.currentSettings = settings;
-                EditorUtility.SetDirty(CurrentSettingsPointer.settingsPointer);
+                CurrentSettingsPointer.CurrentSettings = settings;
+                EditorUtility.SetDirty(CurrentSettingsPointer.SettingsPointer);
                 AssetDatabase.SaveAssets();
             }
             GUI.backgroundColor = originalColor;
