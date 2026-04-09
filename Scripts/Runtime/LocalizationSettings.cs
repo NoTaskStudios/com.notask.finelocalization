@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using FineLocalization.Utils;
 using UnityEngine;
+using com.notask.finelocalization.Scripts.Runtime.Utils;
 
 #if UNITY_EDITOR
-using com.notask.finelocalization.Scripts.Runtime.Utils;
 using UnityEditor;
 #endif
 
