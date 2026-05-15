@@ -5,7 +5,8 @@ using FineLocalization.Runtime;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
-namespace FineLocalization.Runtime
+
+namespace FineLocalization.Scripts.Runtime
 {
     public class RemoteFontBundleLoader : MonoBehaviour
     {
