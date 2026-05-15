@@ -22,7 +22,7 @@ namespace FineLocalization.Scripts.Runtime
         [SerializeField] private float delayBetweenSheets = 0.1f;
 
         private static string PersistentCsvDir =>
-            Path.Combine(Application.persistentDataPath, "FineLocalization/Localization");
+            Path.Combine(Application.persistentDataPath, "FineLocalization/Resources/Localization");
 
         private const string UrlPattern =
             "https://docs.google.com/spreadsheets/d/{0}/export?format=csv&gid={1}";
