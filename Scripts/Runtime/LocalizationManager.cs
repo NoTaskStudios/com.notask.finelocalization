@@ -62,6 +62,11 @@ namespace FineLocalization.Runtime
             OnLocalizationChanged();
         }
 
+        public static void Refresh()
+        {
+            OnLocalizationChanged();
+        }
+
         public static void Initialize(string language)
         {
             if (Dictionary.Count == 0)

@@ -211,6 +211,8 @@ namespace FineLocalization.Scripts.Runtime
                 () => $"[RemoteFontBundleLoader] Fonte registrada como fallback: {fontAsset.name}"
             );
 
+            LocalizationManager.Refresh();
+
             _loadedLanguages.Add(prefix);
             _loadingLanguages.Remove(prefix);
 
