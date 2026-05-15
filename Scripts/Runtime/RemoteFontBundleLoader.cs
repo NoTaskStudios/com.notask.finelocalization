@@ -210,6 +210,10 @@ namespace FineLocalization.Scripts.Runtime
 
             RegisterFallback(fontAsset);
 
+            yield return null;
+
+            ForceRebuildAllTexts();
+
             FineLocalizationLogger.Log(
                 () => $"[RemoteFontBundleLoader] Fonte registrada como fallback: {fontAsset.name}"
             );
@@ -223,7 +227,22 @@ namespace FineLocalization.Scripts.Runtime
 
             onComplete?.Invoke(true);
         }
+        private void ForceRebuildAllTexts()
+        {
+            foreach (var text in Resources.FindObjectsOfTypeAll<TMP_Text>())
+            {
+                if (text == null || !text.gameObject.activeInHierarchy) continue;
+                
+                // Limpa o cache de caracteres do font asset
+                text.font?.ClearFontAssetData(setAtlasTextureIsReadable: false);
+                
+                text.SetAllDirty();
+                text.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+            }
 
+            // Força o TMP a reprocessar todos os assets de fonte
+            TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, null);
+        }
         private RemoteFontBundleConfig FindConfig(string language)
         {
             foreach (var config in bundles)
@@ -253,32 +272,25 @@ namespace FineLocalization.Scripts.Runtime
 
         private void RegisterFallback(TMP_FontAsset fontAsset)
         {
-            if (fontAsset == null)
-                return;
+            if (fontAsset == null) return;
 
             if (addToGlobalTmpFallbacks)
             {
                 TMP_Settings.fallbackFontAssets ??= new List<TMP_FontAsset>();
-
                 if (!TMP_Settings.fallbackFontAssets.Contains(fontAsset))
                     TMP_Settings.fallbackFontAssets.Add(fontAsset);
             }
 
-            foreach (var mainFontAsset in mainFontAssets)
-            {
-                AddFallbackToFont(mainFontAsset, fontAsset);
-            }
+            foreach (var mainFont in mainFontAssets)
+                AddFallbackToFont(mainFont, fontAsset);
 
             if (addToActiveTextFonts)
             {
                 foreach (var text in Resources.FindObjectsOfTypeAll<TMP_Text>())
                 {
-                    if (text == null || text.font == null)
-                        continue;
-
+                    if (text == null || text.font == null) continue;
                     AddFallbackToFont(text.font, fontAsset);
-                    text.SetAllDirty();
-                    text.ForceMeshUpdate();
+                    // NÃO chame ForceMeshUpdate aqui
                 }
             }
 
