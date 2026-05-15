@@ -39,6 +39,9 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Opcional: fonte principal do projeto para receber o fallback diretamente.")]
         [SerializeField] private TMP_FontAsset mainFontAsset;
 
+        [Tooltip("Também adiciona o fallback nas fontes usadas pelos TMP_Text ativos na cena.")]
+        [SerializeField] private bool addToActiveTextFonts = true;
+
         [Header("Localization Integration")]
         [Tooltip("Carrega o bundle de fonte automaticamente quando LocalizationManager.Language mudar.")]
         [SerializeField] private bool loadOnLocalizationChanged = true;
@@ -255,6 +258,8 @@ namespace FineLocalization.Scripts.Runtime
 
             if (addToGlobalTmpFallbacks)
             {
+                TMP_Settings.fallbackFontAssets ??= new List<TMP_FontAsset>();
+
                 if (!TMP_Settings.fallbackFontAssets.Contains(fontAsset))
                     TMP_Settings.fallbackFontAssets.Add(fontAsset);
             }
@@ -265,7 +270,30 @@ namespace FineLocalization.Scripts.Runtime
 
                 if (!mainFontAsset.fallbackFontAssetTable.Contains(fontAsset))
                     mainFontAsset.fallbackFontAssetTable.Add(fontAsset);
+
+                TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, mainFontAsset);
             }
+
+            if (addToActiveTextFonts)
+            {
+                foreach (var text in Resources.FindObjectsOfTypeAll<TMP_Text>())
+                {
+                    if (text == null || text.font == null)
+                        continue;
+
+                    var activeFont = text.font;
+                    activeFont.fallbackFontAssetTable ??= new List<TMP_FontAsset>();
+
+                    if (!activeFont.fallbackFontAssetTable.Contains(fontAsset))
+                        activeFont.fallbackFontAssetTable.Add(fontAsset);
+
+                    TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, activeFont);
+                    text.SetAllDirty();
+                    text.ForceMeshUpdate();
+                }
+            }
+
+            TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, fontAsset);
         }
     }
 }
