@@ -14,7 +14,7 @@ namespace FineLocalization.EditorTools
         private const string UrlPattern =
             "https://docs.google.com/spreadsheets/d/{0}/export?format=csv&gid={1}";
 
-        private const string OutputFolder = "Assets/FineLocalization/Localization";
+        private const string OutputFolder = "Assets/FineLocalization/Resources/Localization";
 
         private const string CharactersTxtFileName =
             "used_characters_all.txt";
