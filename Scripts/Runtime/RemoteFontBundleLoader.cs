@@ -282,9 +282,10 @@ namespace FineLocalization.Scripts.Runtime
 
             if (addToGlobalTmpFallbacks)
             {
-                TMP_Settings.fallbackFontAssets ??= new List<TMP_FontAsset>();
-                if (!TMP_Settings.fallbackFontAssets.Contains(fontAsset))
-                    TMP_Settings.fallbackFontAssets.Add(fontAsset);
+                var globalFallbacks = TMP_Settings.fallbackFontAssets;
+
+                if (globalFallbacks != null && !globalFallbacks.Contains(fontAsset))
+                    globalFallbacks.Add(fontAsset);
             }
 
             foreach (var mainFont in mainFontAssets)
