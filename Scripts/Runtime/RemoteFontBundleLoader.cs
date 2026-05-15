@@ -233,14 +233,11 @@ namespace FineLocalization.Scripts.Runtime
             {
                 if (text == null || !text.gameObject.activeInHierarchy) continue;
                 
-                text.font?.ClearFontAssetData(false);
+                Debug.Log($"[FontDebug] Text: '{text.text}' | Font: {text.font?.name} | Fallbacks: {text.font?.fallbackFontAssetTable?.Count ?? 0}");
                 
                 text.SetAllDirty();
                 text.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
             }
-
-            // Força o TMP a reprocessar todos os assets de fonte
-            TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, null);
         }
         private RemoteFontBundleConfig FindConfig(string language)
         {
