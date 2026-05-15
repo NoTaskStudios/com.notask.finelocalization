@@ -3,6 +3,7 @@
     "rootNamespace": "",
     "references": [
         "FineLocalization",
+        "Unity.TextMeshPro",
         "Unity.EditorCoroutines.Editor",
         "FineLocalization.Utils"
     ],

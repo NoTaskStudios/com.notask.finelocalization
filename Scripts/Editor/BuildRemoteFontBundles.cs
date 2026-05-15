@@ -3,11 +3,10 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using TMPro;
 using UnityEditor;
 using UnityEngine;
 
-namespace Editor
+namespace FineLocalization.EditorTools
 {
     public static class BuildRemoteFontBundles
     {
@@ -19,7 +18,7 @@ namespace Editor
         private const string KoreanFolder = "Assets/RemoteFonts/ko";
         private const string ThaiFolder = "Assets/RemoteFonts/th";
 
-        [MenuItem("Tools/Fine Localization/Build Remote Font AssetBundles/WebGL")]
+        [MenuItem("Tools/Fine Localization/Remote Fonts/Build WebGL AssetBundles", false, 200)]
         public static void BuildWebGlFontBundles()
         {
             if (!Directory.Exists(OutputFolder))
