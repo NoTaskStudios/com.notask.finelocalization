@@ -36,8 +36,8 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Se marcado, adiciona nos fallbacks globais do TMP Settings.")]
         [SerializeField] private bool addToGlobalTmpFallbacks = true;
 
-        [Tooltip("Opcional: fonte principal do projeto para receber o fallback diretamente.")]
-        [SerializeField] private TMP_FontAsset mainFontAsset;
+        [Tooltip("Fontes principais do projeto que devem receber o fallback remoto diretamente.")]
+        [SerializeField] private List<TMP_FontAsset> mainFontAssets = new();
 
         [Tooltip("Também adiciona o fallback nas fontes usadas pelos TMP_Text ativos na cena.")]
         [SerializeField] private bool addToActiveTextFonts = true;
@@ -264,14 +264,9 @@ namespace FineLocalization.Scripts.Runtime
                     TMP_Settings.fallbackFontAssets.Add(fontAsset);
             }
 
-            if (mainFontAsset != null)
+            foreach (var mainFontAsset in mainFontAssets)
             {
-                mainFontAsset.fallbackFontAssetTable ??= new List<TMP_FontAsset>();
-
-                if (!mainFontAsset.fallbackFontAssetTable.Contains(fontAsset))
-                    mainFontAsset.fallbackFontAssetTable.Add(fontAsset);
-
-                TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, mainFontAsset);
+                AddFallbackToFont(mainFontAsset, fontAsset);
             }
 
             if (addToActiveTextFonts)
@@ -281,19 +276,26 @@ namespace FineLocalization.Scripts.Runtime
                     if (text == null || text.font == null)
                         continue;
 
-                    var activeFont = text.font;
-                    activeFont.fallbackFontAssetTable ??= new List<TMP_FontAsset>();
-
-                    if (!activeFont.fallbackFontAssetTable.Contains(fontAsset))
-                        activeFont.fallbackFontAssetTable.Add(fontAsset);
-
-                    TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, activeFont);
+                    AddFallbackToFont(text.font, fontAsset);
                     text.SetAllDirty();
                     text.ForceMeshUpdate();
                 }
             }
 
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, fontAsset);
+        }
+
+        private static void AddFallbackToFont(TMP_FontAsset targetFont, TMP_FontAsset fallbackFont)
+        {
+            if (targetFont == null || fallbackFont == null || targetFont == fallbackFont)
+                return;
+
+            targetFont.fallbackFontAssetTable ??= new List<TMP_FontAsset>();
+
+            if (!targetFont.fallbackFontAssetTable.Contains(fallbackFont))
+                targetFont.fallbackFontAssetTable.Add(fallbackFont);
+
+            TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, targetFont);
         }
     }
 }
