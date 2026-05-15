@@ -77,6 +77,8 @@ namespace FineLocalization.Scripts.Runtime
             Action<bool> onComplete = null
         )
         {
+            FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] >>> INICIANDO EnsureFontForLanguage: {language}");
+
             FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Solicitado idioma: {language}");
 
             if (string.IsNullOrWhiteSpace(language))
@@ -207,12 +209,10 @@ namespace FineLocalization.Scripts.Runtime
                     $"Character Count: {fontAsset.characterTable?.Count ?? 0} | " +
                     $"Glyph Count: {fontAsset.glyphTable?.Count ?? 0}"
             );
-
+            Debug.Log($"[RemoteFontBundleLoader] >>> VAI REGISTRAR FALLBACK: {fontAsset.name}");
             RegisterFallback(fontAsset);
-
-            yield return null;
-
-            ForceRebuildAllTexts();
+            Debug.Log($"[RemoteFontBundleLoader] >>> FALLBACK REGISTRADO");
+            yield return StartCoroutine(ForceRebuildAllTexts());
 
             FineLocalizationLogger.Log(
                 () => $"[RemoteFontBundleLoader] Fonte registrada como fallback: {fontAsset.name}"
@@ -227,8 +227,10 @@ namespace FineLocalization.Scripts.Runtime
 
             onComplete?.Invoke(true);
         }
-        private void ForceRebuildAllTexts()
+        private IEnumerator ForceRebuildAllTexts()
         {
+            yield return null;
+
             foreach (var text in Resources.FindObjectsOfTypeAll<TMP_Text>())
             {
                 if (text == null || !text.gameObject.activeInHierarchy) continue;
@@ -237,6 +239,16 @@ namespace FineLocalization.Scripts.Runtime
                 
                 text.SetAllDirty();
                 text.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+            }
+
+            yield return null;
+
+            foreach (var text in Resources.FindObjectsOfTypeAll<TMP_Text>())
+            {
+                if (text == null || !text.gameObject.activeInHierarchy) continue;
+                var go = text.gameObject;
+                go.SetActive(false);
+                go.SetActive(true);
             }
         }
         private RemoteFontBundleConfig FindConfig(string language)
