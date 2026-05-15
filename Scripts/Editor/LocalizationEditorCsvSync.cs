@@ -35,7 +35,7 @@ namespace FineLocalization.EditorTools
             "ºª°§©®™…–—•" +
             "€£¥₩₹₽";
 
-        [MenuItem("Tools/FineLocalization/Atualizar CSVs e Gerar Characters TXT")]
+        [MenuItem("Tools/Fine Localization/Atualizar CSVs e Gerar Characters TXT")]
         public static void SyncCsvsAndGenerateCharactersTxt()
         {
             try
@@ -140,7 +140,7 @@ namespace FineLocalization.EditorTools
             }
         }
 
-        [MenuItem("Tools/FineLocalization/Gerar Characters TXT dos CSVs já salvos")]
+        [MenuItem("Tools/Fine Localization/Gerar Characters TXT dos CSVs já salvos")]
         public static void GenerateCharactersTxtFromSavedCsvs()
         {
             try
