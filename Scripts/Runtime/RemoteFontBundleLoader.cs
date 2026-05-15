@@ -233,8 +233,7 @@ namespace FineLocalization.Scripts.Runtime
             {
                 if (text == null || !text.gameObject.activeInHierarchy) continue;
                 
-                // Limpa o cache de caracteres do font asset
-                text.font?.ClearFontAssetData(setAtlasTextureIsReadable: false);
+                text.font?.ClearFontAssetData(false);
                 
                 text.SetAllDirty();
                 text.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
