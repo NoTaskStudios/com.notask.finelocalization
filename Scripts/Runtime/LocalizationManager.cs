@@ -64,11 +64,14 @@ namespace FineLocalization.Runtime
 
         public static void Initialize(string language)
         {
-            LanguageReader.GetLanguageKey(language.ToLower());
             if (Dictionary.Count == 0)
                 Read();
-
-            Language = language;
+        
+            var resolvedLanguage = LanguageReader.GetLanguageKey(
+                language.Trim().ToLowerInvariant()
+            );
+        
+            Language = resolvedLanguage;
         }
 
         public static void Read()
