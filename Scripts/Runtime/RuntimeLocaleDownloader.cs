@@ -42,8 +42,20 @@ namespace FineLocalization.Scripts.Runtime
                         LocalizationManager.LoadFromCsvMap(map);
                 });
             }
+            else
+            {
+                StartCoroutine(NotifyLocalizationAlreadyReady());
+            }
         }
+        private IEnumerator NotifyLocalizationAlreadyReady()
+        {
+            yield return null;
 
+            Debug.Log("[FineLocalization] Download em runtime desativado. Usando CSVs locais da build.");
+
+            OnDownloadLocalizationComplete?.Invoke(true);
+            OnAllSheetsDownloadedComplete?.Invoke(true);
+        }
         /// <summary>
         /// Baixa todos os sheets configurados em runtime.
         /// </summary>
