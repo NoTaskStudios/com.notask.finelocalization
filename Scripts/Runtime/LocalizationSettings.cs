@@ -14,6 +14,8 @@ namespace FineLocalization.Runtime
     [CreateAssetMenu(fileName = "LocalizationSettings", menuName = "Fine Localization/Settings")]
     public class LocalizationSettings : ScriptableObject
     {
+        [Tooltip("Enable FineLocalization info, warning and error logs. Keep disabled for lighter WebGL builds.")]
+        public bool EnableLogs = false;
         public List<LocalizationSource> Sources = new();
         public UnityEngine.Object SaveFolder;
         public int skip = 0;

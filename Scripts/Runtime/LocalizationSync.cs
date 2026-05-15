@@ -37,7 +37,7 @@ namespace FineLocalization.Runtime
 
         public void Awake()
         {
-			//Debug.logWarning("This script has been deprecated. Use LocalizationSettingsWindow or LocalizationSettings (Scriptable Object).");
+			FineLocalizationLogger.LogWarning("[FineLocalization] This script has been deprecated. Use LocalizationSettingsWindow or LocalizationSettings (Scriptable Object).");
         }
 
 		/// <summary>
@@ -56,7 +56,7 @@ namespace FineLocalization.Runtime
 		{
 			var folder = UnityEditor.AssetDatabase.GetAssetPath(SaveFolder);
 
-			//Debug.log("<color=yellow>Localization sync started...</color>");
+			FineLocalizationLogger.Log("[FineLocalization] <color=yellow>Localization sync started...</color>");
 
 			var dict = new Dictionary<string, UnityWebRequest>();
 
@@ -64,7 +64,7 @@ namespace FineLocalization.Runtime
 			{
 				var url = string.Format(UrlPattern, TableId, sheet.Id);
 
-				//Debug.log($"Downloading: {url}...");
+				FineLocalizationLogger.Log(() => $"[FineLocalization] Downloading: {url}...");
 
 				dict.Add(url, UnityWebRequest.Get(url));
 			}
@@ -85,7 +85,7 @@ namespace FineLocalization.Runtime
 					var path = System.IO.Path.Combine(folder, sheet.Name + ".csv");
 
 					System.IO.File.WriteAllBytes(path, request.downloadHandler.data);
-					//Debug.logFormat("Sheet {0} downloaded to <color=grey>{1}</color>", sheet.Id, path);
+					FineLocalizationLogger.Log(() => $"[FineLocalization] Sheet {sheet.Id} downloaded to <color=grey>{path}</color>");
 				}
 				else
 				{
@@ -95,7 +95,7 @@ namespace FineLocalization.Runtime
 
             UnityEditor.AssetDatabase.Refresh();
 
-			//Debug.log("<color=yellow>Localization sync completed!</color>");
+			FineLocalizationLogger.Log("[FineLocalization] <color=yellow>Localization sync completed!</color>");
 		}
 
 		#endif

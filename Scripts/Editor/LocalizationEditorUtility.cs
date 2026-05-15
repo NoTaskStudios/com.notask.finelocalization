@@ -61,7 +61,7 @@ namespace FineLocalization.Editor
                     var progress = (float)current / total;
                     var url = string.Format(LocalizationSettings.UrlPattern, source.TableId, sheet.Id);
 
-                    //Debug.log($"Downloading <color=grey>{url}</color>");
+                    FineLocalizationLogger.Log(() => $"[FineLocalization] Downloading <color=grey>{url}</color>");
 
                     var request = UnityWebRequest.Get(url);
 
@@ -83,7 +83,7 @@ namespace FineLocalization.Editor
                         AssetDatabase.Refresh();
                         sheet.TextAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
                         EditorUtility.SetDirty(targetSettings);
-                        //Debug.log($"[FineLocalization] Sheet <color=yellow>{sheet.Name}</color> saved to <color=grey>{path}</color>");
+                        FineLocalizationLogger.Log(() => $"[FineLocalization] Sheet <color=yellow>{sheet.Name}</color> saved to <color=grey>{path}</color>");
                     }
                     else
                     {
@@ -121,7 +121,7 @@ namespace FineLocalization.Editor
             {
                 if (string.IsNullOrEmpty(source.TableId))
                 {
-                    //Debug.logWarning("[FineLocalization] Skipped empty TableId.");
+                    FineLocalizationLogger.LogWarning("[FineLocalization] Skipped empty TableId.");
                     continue;
                 }
 

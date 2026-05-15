@@ -81,6 +81,8 @@ namespace FineLocalization.Editor
             }
 
             EditorGUILayout.Space();
+            MakeLoggingToggle();
+            EditorGUILayout.Space();
 
             SheetName = MakeSheetsDropdown(Editor.SheetNames);
 
@@ -111,6 +113,23 @@ namespace FineLocalization.Editor
             {
                 MakeBottomMenu();
             }
+        }
+
+        private static void MakeLoggingToggle()
+        {
+            EditorGUI.BeginChangeCheck();
+            var enableLogs = EditorGUILayout.ToggleLeft(
+                "Enable FineLocalization logs",
+                Settings.EnableLogs,
+                GUILayout.MinWidth(MinColumnWidth + ButtonsColumnSizeFix),
+                GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix)
+            );
+
+            if (!EditorGUI.EndChangeCheck()) return;
+
+            Settings.EnableLogs = enableLogs;
+            EditorUtility.SetDirty(Settings);
+            AssetDatabase.SaveAssets();
         }
         
         public void OnDestroy()
@@ -287,7 +306,7 @@ namespace FineLocalization.Editor
                 }
                 else
                 {
-                    //Debug.logWarning($"[FineLocalization] Could not find TableId for sheet: {SheetName}");
+                    FineLocalizationLogger.LogWarning(() => $"[FineLocalization] Could not find TableId for sheet: {SheetName}");
                 }
             }
 
@@ -369,7 +388,7 @@ namespace FineLocalization.Editor
             var source = FindSourceForSheet(SheetName);
             if (source == null)
             {
-                //Debug.logError($"[FineLocalization] Could not find TableId for sheet: {SheetName}");
+                FineLocalizationLogger.LogError(() => $"[FineLocalization] Could not find TableId for sheet: {SheetName}");
                 yield break;
             }
 

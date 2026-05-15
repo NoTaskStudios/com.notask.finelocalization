@@ -92,7 +92,7 @@ namespace FineLocalization.Runtime
             // Cria o asset fora do package
             AssetDatabase.CreateAsset(settings, settingsPath);
 
-            //Debug.log($"[FineLocalization] Criado novo LocalizationSettings em: {settingsPath}");
+            FineLocalizationLogger.Log(() => $"[FineLocalization] Criado novo LocalizationSettings em: {settingsPath}");
 
             // Garante que a pasta SaveFolder aponte corretamente
             settings.SaveFolder = AssetDatabase.LoadAssetAtPath<Object>(localizationFolderPath);

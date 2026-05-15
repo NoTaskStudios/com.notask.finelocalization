@@ -16,9 +16,22 @@ namespace FineLocalization.Editor
 
             CurrentSettingsInfo();
             DisplayHelp();
-            DrawDefaultInspector();
+            DrawSettings();
             DisplayButtons();
             DisplayWarnings();
+        }
+
+        private void DrawSettings()
+        {
+            serializedObject.Update();
+
+            EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(LocalizationSettings.EnableLogs)));
+            EditorGUILayout.HelpBox("Disable this for WebGL/release builds to suppress FineLocalization info, warning and error logs globally.", MessageType.Info);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(LocalizationSettings.Sources)));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(LocalizationSettings.SaveFolder)));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(LocalizationSettings.skip)));
+
+            serializedObject.ApplyModifiedProperties();
         }
 
         private void CurrentSettingsInfo()

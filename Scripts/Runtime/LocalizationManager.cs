@@ -106,7 +106,7 @@ namespace FineLocalization.Runtime
                     var lines = GetLines(rawText);
                     if (lines.Count == 0)
                     {
-                        //Debug.logError($"[Fine Localization] Sheet `{sheet.Name}` está vazio.");
+                        FineLocalizationLogger.LogError(() => $"[FineLocalization] Sheet `{sheet.Name}` está vazio.");
                         continue;
                     }
                     
@@ -118,13 +118,13 @@ namespace FineLocalization.Runtime
                     
                     if (header.Count < 3)
                     {
-                        //Debug.logError($"[Fine Localization] Header inválido em `{sheet.Name}`. Esperado: Index,Key,<langs...>");
+                        FineLocalizationLogger.LogError(() => $"[FineLocalization] Header inválido em `{sheet.Name}`. Esperado: Index,Key,<langs...>");
                         continue;
                     }
                     
                     if (header.Count != header.Distinct(StringComparer.OrdinalIgnoreCase).Count())
                     {
-                        //Debug.logError($"[Fine Localization] Idiomas duplicados em `{sheet.Name}`. Sheet ignorado.");
+                        FineLocalizationLogger.LogError(() => $"[FineLocalization] Idiomas duplicados em `{sheet.Name}`. Sheet ignorado.");
                         continue;
                     }
 
@@ -150,7 +150,7 @@ namespace FineLocalization.Runtime
                         // Permite a mesma key em outros sheets; se quiser global único, mantenha esse HashSet:
                         if (keys.Contains(key))
                         {
-                            //Debug.logWarning($"[Fine Localization] key duplicada `{key}` (sheet `{sheet.Name}`). Linha ignorada.");
+                            FineLocalizationLogger.LogWarning(() => $"[FineLocalization] key duplicada `{key}` (sheet `{sheet.Name}`). Linha ignorada.");
                             continue;
                         }
                         keys.Add(key);
@@ -163,7 +163,7 @@ namespace FineLocalization.Runtime
                             if (!Dictionary[lang].ContainsKey(key))
                                 Dictionary[lang].Add(key, value);
                             else{
-                                //Debug.logWarning($"[Fine Localization] key duplicada `{key}` para idioma `{lang}` em `{sheet.Name}`.");
+                                FineLocalizationLogger.LogWarning(() => $"[FineLocalization] key duplicada `{key}` para idioma `{lang}` em `{sheet.Name}`.");
                             }
                         }
                     }
@@ -196,7 +196,7 @@ namespace FineLocalization.Runtime
 
             if (!exists || string.IsNullOrEmpty(value))
             {
-                //Debug.logWarning($"[Fine Localization] Translation not found: {localizationKey} ({Language}).");
+                FineLocalizationLogger.LogWarning(() => $"[FineLocalization] Translation not found: {localizationKey} ({Language}).");
                 return localizationKey; // <-- sempre retorna a key como fallback
             }
 
@@ -248,7 +248,7 @@ namespace FineLocalization.Runtime
 
             if (string.IsNullOrWhiteSpace(currentCsv))
             {
-                //Debug.logError($"[Fine Localization] Não foi possível carregar CSV de `{sheetName}` para persistência.");
+                FineLocalizationLogger.LogError(() => $"[FineLocalization] Não foi possível carregar CSV de `{sheetName}` para persistência.");
                 return;
             }
 
@@ -256,14 +256,14 @@ namespace FineLocalization.Runtime
             var lines = GetLines(currentCsv);
             if (lines.Count == 0)
             {
-                //Debug.logError($"[Fine Localization] CSV vazio em `{sheetName}`.");
+                FineLocalizationLogger.LogError(() => $"[FineLocalization] CSV vazio em `{sheetName}`.");
                 return;
             }
 
             var header = GetColumns(lines[0]); // Index, Key, lang...
             if (header.Count < 2)
             {
-                //Debug.logError($"[Fine Localization] Header inválido em `{sheetName}`.");
+                FineLocalizationLogger.LogError(() => $"[FineLocalization] Header inválido em `{sheetName}`.");
                 return;
             }
 
