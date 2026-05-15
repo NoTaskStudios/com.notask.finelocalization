@@ -19,6 +19,16 @@ namespace FineLocalization.EditorTools
         private const string CharactersTxtFileName =
             "used_characters_all.txt";
 
+        private const string LatinBaseCharactersTxtFileName =
+            "characters_latin_base.txt";
+
+        private const string LatinBaseCharacters =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" +
+            "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞß" +
+            "àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ" +
+            "0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~" +
+            "€£¥¢₹₽₩₫₴₺¿¡…•·";
+
         private const int RequestTimeoutSeconds = 20;
 
         /*
@@ -35,7 +45,7 @@ namespace FineLocalization.EditorTools
             "ºª°§©®™…–—•" +
             "€£¥₩₹₽";
 
-        [MenuItem("Tools/Fine Localization/Atualizar CSVs e Gerar Characters TXT")]
+        [MenuItem("Tools/Fine Localization/Sync/Update CSVs + Character TXTs", false, 100)]
         public static void SyncCsvsAndGenerateCharactersTxt()
         {
             try
@@ -119,13 +129,14 @@ namespace FineLocalization.EditorTools
                 );
 
                 GenerateCharactersTxt(downloadedCsvs);
+                GenerateLatinBaseCharactersTxt();
 
                 AssetDatabase.Refresh();
 
                 FineLocalizationLogger.Log(
                     $"[FineLocalization Editor] Concluído! " +
                     $"{downloadedCsvs.Count} CSV(s) atualizados e " +
-                    $"{CharactersTxtFileName} gerado em:\n{OutputFolder}"
+                    $"{CharactersTxtFileName} / {LatinBaseCharactersTxtFileName} gerados em:\n{OutputFolder}"
                 );
             }
             catch (Exception e)
@@ -140,7 +151,7 @@ namespace FineLocalization.EditorTools
             }
         }
 
-        [MenuItem("Tools/Fine Localization/Gerar Characters TXT dos CSVs já salvos")]
+        [MenuItem("Tools/Fine Localization/Characters/Generate From Saved CSVs", false, 150)]
         public static void GenerateCharactersTxtFromSavedCsvs()
         {
             try
@@ -172,6 +183,7 @@ namespace FineLocalization.EditorTools
                 }
 
                 GenerateCharactersTxt(csvMap);
+                GenerateLatinBaseCharactersTxt();
 
                 AssetDatabase.Refresh();
 
@@ -184,6 +196,23 @@ namespace FineLocalization.EditorTools
             {
                 FineLocalizationLogger.LogError(
                     $"[FineLocalization Editor] Erro ao gerar TXT dos CSVs locais: {e}"
+                );
+            }
+        }
+
+        [MenuItem("Tools/Fine Localization/Characters/Generate Latin Base", false, 151)]
+        public static void GenerateLatinBaseCharactersTxtMenu()
+        {
+            try
+            {
+                EnsureOutputFolderExists();
+                GenerateLatinBaseCharactersTxt();
+                AssetDatabase.Refresh();
+            }
+            catch (Exception e)
+            {
+                FineLocalizationLogger.LogError(
+                    $"[FineLocalization Editor] Erro ao gerar Latin base TXT: {e}"
                 );
             }
         }
@@ -279,6 +308,27 @@ namespace FineLocalization.EditorTools
             FineLocalizationLogger.Log(
                 $"[FineLocalization Editor] Arquivo de caracteres criado com " +
                 $"{charactersBuilder.Length} caractere(s) únicos:\n{outputPath}"
+            );
+        }
+
+        private static void GenerateLatinBaseCharactersTxt()
+        {
+            var seenCharacters = new HashSet<char>();
+            var charactersBuilder = new StringBuilder();
+
+            AddTextCharacters(LatinBaseCharacters, seenCharacters, charactersBuilder);
+
+            var outputPath = Path.Combine(OutputFolder, LatinBaseCharactersTxtFileName);
+
+            File.WriteAllText(
+                outputPath,
+                charactersBuilder.ToString(),
+                Encoding.UTF8
+            );
+
+            FineLocalizationLogger.Log(
+                $"[FineLocalization Editor] Arquivo Latin base criado com " +
+                $"{charactersBuilder.Length} caractere(s):\n{outputPath}"
             );
         }
 

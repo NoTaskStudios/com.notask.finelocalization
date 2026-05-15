@@ -21,6 +21,12 @@ namespace FineLocalization.Scripts.Runtime
         [SerializeField] private float retryDelaySeconds = 1f;
         [SerializeField] private float delayBetweenSheets = 0.1f;
 
+        [Header("Remote Font Integration")]
+        [Tooltip("Opcional. Se definido, carrega o fallback de fonte remoto antes de aplicar os CSVs baixados.")]
+        [SerializeField] private RemoteFontBundleLoader remoteFontBundleLoader;
+
+        [SerializeField] private bool loadRemoteFontBeforeApplyingLocalization = true;
+
         private static string PersistentCsvDir =>
             Path.Combine(Application.persistentDataPath, "FineLocalization/Resources/Localization");
 
@@ -36,11 +42,7 @@ namespace FineLocalization.Scripts.Runtime
         {
             if (downloadOnStart)
             {
-                DownloadSheetsWithCallback((loaded, map) =>
-                {
-                    if (loaded)
-                        LocalizationManager.LoadFromCsvMap(map);
-                });
+                StartCoroutine(DownloadSheetsRuntime());
             }
             else
             {
@@ -120,7 +122,14 @@ namespace FineLocalization.Scripts.Runtime
                 OnDownloadLocalizationComplete?.Invoke(sourceSuccess);
 
                 if (sourceSuccess)
+                {
+                    if (loadRemoteFontBeforeApplyingLocalization && remoteFontBundleLoader != null)
+                    {
+                        yield return remoteFontBundleLoader.EnsureFontForLanguage(LocalizationManager.Language);
+                    }
+
                     LocalizationManager.LoadFromCsvMap(new Dictionary<string, string>(_csvData));
+                }
             }
 
             OnAllSheetsDownloadedComplete?.Invoke(allSourcesSuccess && _csvData.Count > 0);

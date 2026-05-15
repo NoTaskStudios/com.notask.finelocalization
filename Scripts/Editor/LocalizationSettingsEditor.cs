@@ -1,4 +1,5 @@
 ﻿using System.Linq;
+using FineLocalization.EditorTools;
 using FineLocalization.Runtime;
 using UnityEditor;
 using UnityEngine;
@@ -69,6 +70,7 @@ namespace FineLocalization.Editor
 
             if (GUILayout.Button("↺ Resolve Sheets", buttonStyle)) settings.ResolveGoogleSheets();
             if (GUILayout.Button("▼ Download Sheets", buttonStyle)) settings.DownloadGoogleSheets();
+            if (GUILayout.Button("▣ Update CSVs + Character TXTs", buttonStyle)) LocalizationEditorCsvSync.SyncCsvsAndGenerateCharactersTxt();
             if (GUILayout.Button("❖ Open Editor", buttonStyle)) LocalizationSettings.RaiseOnRunEditor();
         }
 

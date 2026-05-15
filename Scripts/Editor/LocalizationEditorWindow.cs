@@ -39,6 +39,8 @@ namespace FineLocalization.Editor
         {
             LocalizationSettings.OnRunEditor += Open;
         }
+
+        [MenuItem("Tools/Fine Localization/Windows/Localization Editor", false, 9)]
         public static void Open()
         {
             if (_window == null)

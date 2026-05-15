@@ -15,19 +15,19 @@ namespace FineLocalization.Editor
         private Vector2 _scrollPosition;
         private ViewMode _currentView;
 
-        [MenuItem("Tools/Fine Localization/Language Settings")]
+        [MenuItem("Tools/Fine Localization/Windows/Language Settings", false, 10)]
         public static void ShowLanguageWindow()
         {
             GetWindow<LocalizationSettingsWindow>("Language Settings")._currentView = ViewMode.Language;
         }
 
-        [MenuItem("Tools/Fine Localization/CSV Settings")]
+        [MenuItem("Tools/Fine Localization/Windows/Settings Asset", false, 11)]
         public static void ShowCSVSettingsWindow()
         {
             EditorUtility.OpenPropertyEditor(Settings);
         }
 
-        [MenuItem("Tools/Fine Localization/Reset")]
+        [MenuItem("Tools/Fine Localization/Tools/Reset Settings", false, 300)]
         public static void ResetSettings()
         {
             if (EditorUtility.DisplayDialog("Fine Localization", "Do you want to reset settings?", "Yes", "No"))
@@ -36,7 +36,7 @@ namespace FineLocalization.Editor
             }
         }
 
-        [MenuItem("Tools/Fine Localization/Help")]
+        [MenuItem("Tools/Fine Localization/Help/Documentation", false, 500)]
         public static void Help()
         {
             Application.OpenURL("https://github.com/NoTaskStudios/com.notask.finelocalization");

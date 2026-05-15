@@ -12,7 +12,7 @@ namespace FineLocalization.Editor.Build
         private string csvPath = string.Empty;
         private string[,] csv;
 
-        [MenuItem("Tools/Locale Creator")]
+        [MenuItem("Tools/Fine Localization/Windows/Locale Creator", false, 12)]
         public static void ShowWindow()
         {
             GetWindow<LocaleCreatorWindow>("Locale Creator");
