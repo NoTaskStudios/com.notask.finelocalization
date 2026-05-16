@@ -14,6 +14,10 @@ namespace FineLocalization.Scripts.Runtime
     {
         [Header("Runtime Settings")]
         [SerializeField] private bool downloadOnStart = true;
+        [Tooltip("WebGL browsers block Google Sheets export redirects because they do not include CORS headers. Keep this disabled unless your deployment confirms direct Google downloads work.")]
+        [SerializeField] private bool allowDirectGoogleDownloadInWebGL = false;
+        [Tooltip("Optional URL pattern for a CORS-enabled proxy/CDN. Use {0} for TableId and {1} for gid. Leave empty to use Google Sheets export.")]
+        [SerializeField] private string csvUrlPatternOverride;
 
         [Header("Retry Settings")]
         [SerializeField] private int maxDownloadAttempts = 3;
@@ -53,10 +57,7 @@ namespace FineLocalization.Scripts.Runtime
         {
             yield return null;
 
-            FineLocalizationLogger.Log("[FineLocalization] Download em runtime desativado. Usando CSVs locais da build.");
-
-            OnDownloadLocalizationComplete?.Invoke(true);
-            OnAllSheetsDownloadedComplete?.Invoke(true);
+            UseBundledCsvs();
         }
         /// <summary>
         /// Baixa todos os sheets configurados em runtime.
@@ -68,6 +69,15 @@ namespace FineLocalization.Scripts.Runtime
 
         public IEnumerator DownloadSheetsRuntime()
         {
+            LocalizationManager.RuntimeCsvResolver = GetCsvContent;
+            LocalizationManager.RuntimeCsvPersistenceHook = PersistCsvContent;
+
+            if (ShouldUseBundledCsvs())
+            {
+                UseBundledCsvs();
+                yield break;
+            }
+
             var activeSources = LocalizationSettings.Instance.GetActiveSources();
             var allSourcesSuccess = true;
 
@@ -89,7 +99,7 @@ namespace FineLocalization.Scripts.Runtime
                 for (var i = 0; i < source.Sheets.Count; i++)
                 {
                     var sheet = source.Sheets[i];
-                    var url = string.Format(UrlPattern, source.TableId, sheet.Id);
+                    var url = BuildCsvUrl(source.TableId, sheet.Id);
 
                     var downloaded = false;
                     string csvContent = null;
@@ -114,6 +124,7 @@ namespace FineLocalization.Scripts.Runtime
                     }
 
                     _csvData[sheet.Name] = csvContent;
+                    yield return SaveCsvToDisk(sheet.Name, csvContent);
 
                     if (delayBetweenSheets > 0f)
                         yield return new WaitForSecondsRealtime(delayBetweenSheets);
@@ -133,6 +144,39 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             OnAllSheetsDownloadedComplete?.Invoke(allSourcesSuccess && _csvData.Count > 0);
+        }
+
+        private bool ShouldUseBundledCsvs()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            return !allowDirectGoogleDownloadInWebGL &&
+                   string.IsNullOrWhiteSpace(csvUrlPatternOverride);
+#else
+            return false;
+#endif
+        }
+
+        private void UseBundledCsvs()
+        {
+            LocalizationManager.RuntimeCsvResolver = GetCsvContent;
+            LocalizationManager.RuntimeCsvPersistenceHook = PersistCsvContent;
+            LocalizationManager.ReloadAll();
+
+            FineLocalizationLogger.Log(
+                "[FineLocalization] Runtime Google Sheets download skipped on WebGL. Using bundled CSV TextAssets."
+            );
+
+            OnDownloadLocalizationComplete?.Invoke(true);
+            OnAllSheetsDownloadedComplete?.Invoke(true);
+        }
+
+        private string BuildCsvUrl(string tableId, long sheetId)
+        {
+            var pattern = string.IsNullOrWhiteSpace(csvUrlPatternOverride)
+                ? UrlPattern
+                : csvUrlPatternOverride;
+
+            return string.Format(pattern, tableId, sheetId);
         }
 
         private IEnumerator DownloadCsvWithRetry(
@@ -187,6 +231,11 @@ namespace FineLocalization.Scripts.Runtime
             );
 
             onComplete?.Invoke(false, null);
+        }
+
+        private void PersistCsvContent(string sheetName, string content)
+        {
+            StartCoroutine(SaveCsvToDisk(sheetName, content));
         }
 
         /// <summary>

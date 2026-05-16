@@ -14,9 +14,20 @@ namespace FineLocalization.Runtime
     [CreateAssetMenu(fileName = "LocalizationSettings", menuName = "Fine Localization/Settings")]
     public class LocalizationSettings : ScriptableObject
     {
+        public enum LocalizationMode
+        {
+            Production,
+            Development
+        }
+
         [Tooltip("Enable FineLocalization info, warning and error logs. Keep disabled for lighter WebGL builds.")]
         public bool EnableLogs = false;
+
+        [Tooltip("Chooses which source list is used by runtime, editor download/resolve, and builds.")]
+        public LocalizationMode Mode = LocalizationMode.Production;
+
         public List<LocalizationSource> Sources = new();
+        public List<LocalizationSource> DevSources = new();
         public UnityEngine.Object SaveFolder;
         public int skip = 0;
         
@@ -27,7 +38,12 @@ namespace FineLocalization.Runtime
 
         public static event Action OnRunEditor;
 
-        public List<LocalizationSource> GetActiveSources() => Sources; 
+        public List<LocalizationSource> GetActiveSources()
+        {
+            return Mode == LocalizationMode.Development
+                ? (DevSources ??= new List<LocalizationSource>())
+                : (Sources ??= new List<LocalizationSource>());
+        }
         
         public static void RaiseOnRunEditor() => OnRunEditor?.Invoke();
         
@@ -41,6 +57,7 @@ namespace FineLocalization.Runtime
                     Sheets = Constants.ExampleSheets.Select(i => new Sheet { Name = i.Key, Id = i.Value }).ToList()
                 }
             };
+            DevSources = new List<LocalizationSource>();
 #if UNITY_EDITOR
             SaveFolder = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(@"Assets/FineLocalization/Resources/Localization");
 #endif

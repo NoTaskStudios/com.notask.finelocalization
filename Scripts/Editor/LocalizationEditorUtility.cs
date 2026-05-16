@@ -26,9 +26,10 @@ namespace FineLocalization.Editor
         public static IEnumerator DownloadGoogleSheetsCoroutine(this LocalizationSettings targetSettings,
             Action callback = null, bool silent = false)
         {
-            if (targetSettings.Sources.Count == 0)
+            var activeSources = targetSettings.GetActiveSources();
+            if (activeSources == null || activeSources.Count == 0)
             {
-                EditorUtility.DisplayDialog("[FineLocalization] Error", "No Table Ids configured.", "OK");
+                EditorUtility.DisplayDialog("[FineLocalization] Error", $"No Table Ids configured for {targetSettings.Mode}.", "OK");
                 yield break;
             }
 
@@ -46,14 +47,14 @@ namespace FineLocalization.Editor
 
             LocalizationSettings.Timestamp = DateTime.UtcNow;
 
-            if (!silent)
-                ClearSaveFolder();
-
-            var allSheets = targetSettings.Sources.SelectMany(s => s.Sheets).ToList();
+            var allSheets = activeSources.SelectMany(s => s.Sheets).ToList();
             var total = allSheets.Count;
             int current = 0;
 
-            foreach (var source in targetSettings.Sources)
+            if (!silent)
+                ClearActiveSheetFiles();
+
+            foreach (var source in activeSources)
             {
                 foreach (var sheet in source.Sheets)
                 {
@@ -102,11 +103,15 @@ namespace FineLocalization.Editor
             if (!silent)
                 EditorUtility.DisplayDialog("[FineLocalization] Message", $"{total} localization sheets downloaded!", "OK");
 
-            void ClearSaveFolder()
+            void ClearActiveSheetFiles()
             {
-                var files = Directory.GetFiles(AssetDatabase.GetAssetPath(targetSettings.SaveFolder));
-                foreach (var file in files)
-                    File.Delete(file);
+                var folderPath = AssetDatabase.GetAssetPath(targetSettings.SaveFolder);
+                foreach (var sheet in allSheets)
+                {
+                    var filePath = Path.Combine(folderPath, sheet.Name + ".csv");
+                    if (File.Exists(filePath))
+                        File.Delete(filePath);
+                }
             }
         }
 
@@ -117,7 +122,14 @@ namespace FineLocalization.Editor
 
         public static IEnumerator ResolveGoogleSheetsCoroutine(this LocalizationSettings settings)
         {
-            foreach (var source in settings.Sources)
+            var activeSources = settings.GetActiveSources();
+            if (activeSources == null || activeSources.Count == 0)
+            {
+                EditorUtility.DisplayDialog("[FineLocalization] Error", $"No Table Ids configured for {settings.Mode}.", "OK");
+                yield break;
+            }
+
+            foreach (var source in activeSources)
             {
                 if (string.IsNullOrEmpty(source.TableId))
                 {

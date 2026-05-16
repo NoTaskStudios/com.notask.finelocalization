@@ -30,8 +30,9 @@ namespace FineLocalization.Runtime
             get => _language;
             set
             {
-                if (_language == value) return;
-                _language = Dictionary.ContainsKey(value) ? value : DefaultLanguage;
+                var resolvedLanguage = ResolveLanguage(value);
+                if (_language == resolvedLanguage) return;
+                _language = resolvedLanguage;
                 OnLocalizationChanged();
             }
         }
@@ -67,6 +68,17 @@ namespace FineLocalization.Runtime
             OnLocalizationChanged();
         }
 
+        private static string ResolveLanguage(string language)
+        {
+            if (!string.IsNullOrWhiteSpace(language) && Dictionary.ContainsKey(language))
+                return language;
+
+            if (Dictionary.ContainsKey(DefaultLanguage))
+                return DefaultLanguage;
+
+            return Dictionary.Count > 0 ? Dictionary.Keys.First() : DefaultLanguage;
+        }
+
         public static void Initialize(string language)
         {
             if (Dictionary.Count == 0)
@@ -85,11 +97,35 @@ namespace FineLocalization.Runtime
 
             var keys = new HashSet<string>(); // evita duplicidade global de chave
             var settings = LocalizationSettings.Instance;
-
-            foreach (var source in settings.GetActiveSources())
+            if (settings == null)
             {
-                foreach (var sheet  in source.Sheets)
+                FineLocalizationLogger.LogError("[FineLocalization] LocalizationSettings não encontrado.");
+                return;
+            }
+
+            var sources = settings.GetActiveSources();
+            if (sources == null || sources.Count == 0)
+            {
+                FineLocalizationLogger.LogError("[FineLocalization] Nenhuma source de localização configurada.");
+                return;
+            }
+
+            foreach (var source in sources)
+            {
+                if (source?.Sheets == null || source.Sheets.Count == 0)
                 {
+                    FineLocalizationLogger.LogWarning("[FineLocalization] Source vazia ignorada.");
+                    continue;
+                }
+
+                foreach (var sheet in source.Sheets)
+                {
+                    if (sheet == null || string.IsNullOrWhiteSpace(sheet.Name))
+                    {
+                        FineLocalizationLogger.LogWarning("[FineLocalization] Sheet inválida ignorada.");
+                        continue;
+                    }
+
                     // 1) override em memória
                     string rawText = null;
                     if (_runtimeCsvOverride != null &&
@@ -106,7 +142,14 @@ namespace FineLocalization.Runtime
                             rawText = csvFromDisk;
                     }
                     // 3) fallback TextAsset
-                    rawText ??= sheet.TextAsset.text;
+                    rawText ??= sheet.TextAsset != null ? sheet.TextAsset.text : null;
+                    if (string.IsNullOrWhiteSpace(rawText))
+                    {
+                        FineLocalizationLogger.LogError(
+                            () => $"[FineLocalization] Sheet `{sheet.Name}` sem CSV válido. Baixe a planilha no Editor antes do build."
+                        );
+                        continue;
+                    }
                     
                     var lines = GetLines(rawText);
                     if (lines.Count == 0)
@@ -115,30 +158,41 @@ namespace FineLocalization.Runtime
                         continue;
                     }
                     
-                    var header = lines[0]
-                        .Split(',')
-                        .Select(i => i.Trim())
-                        .Where(i => !string.IsNullOrWhiteSpace(i))
-                        .ToList();
-                    
-                    if (header.Count < 3)
+                    var header = GetColumns(lines[0]);
+                    var keyColumnIndex = settings.skip;
+                    var firstLanguageColumnIndex = keyColumnIndex + 1;
+
+                    if (keyColumnIndex < 0 || header.Count <= firstLanguageColumnIndex)
                     {
-                        FineLocalizationLogger.LogError(() => $"[FineLocalization] Header inválido em `{sheet.Name}`. Esperado: Index,Key,<langs...>");
+                        FineLocalizationLogger.LogError(
+                            () => $"[FineLocalization] Header inválido em `{sheet.Name}`. Skip={settings.skip}, colunas={header.Count}. Esperado: <colunas ignoradas>,Key,<langs...>"
+                        );
                         continue;
                     }
-                    
-                    if (header.Count != header.Distinct(StringComparer.OrdinalIgnoreCase).Count())
+
+                    var languages = header
+                        .Skip(firstLanguageColumnIndex)
+                        .Where(i => !string.IsNullOrWhiteSpace(i))
+                        .ToList();
+
+                    if (languages.Count == 0)
+                    {
+                        FineLocalizationLogger.LogError(() => $"[FineLocalization] Nenhum idioma encontrado em `{sheet.Name}`.");
+                        continue;
+                    }
+
+                    if (languages.Count != languages.Distinct(StringComparer.OrdinalIgnoreCase).Count())
                     {
                         FineLocalizationLogger.LogError(() => $"[FineLocalization] Idiomas duplicados em `{sheet.Name}`. Sheet ignorado.");
                         continue;
                     }
-
-                    var skip = settings.skip;
                     
-                    // Cria dicionários por idioma (pula Index e Key)
-                    for (var i = skip; i < header.Count; i++)
+                    // Cria dicionários por idioma (pula colunas ignoradas e Key)
+                    for (var i = firstLanguageColumnIndex; i < header.Count; i++)
                     {
                         var lang = header[i];
+                        if (string.IsNullOrWhiteSpace(lang)) continue;
+
                         if (!Dictionary.ContainsKey(lang))
                             Dictionary.Add(lang, new Dictionary<string, string>(StringComparer.Ordinal));
                     }
@@ -147,9 +201,9 @@ namespace FineLocalization.Runtime
                     for (var i = 1; i < lines.Count; i++)
                     {
                         var cols = GetColumns(lines[i]);
-                        if (cols.Count < skip) continue;
+                        if (cols.Count <= keyColumnIndex) continue;
                         
-                        var key = cols[skip];
+                        var key = cols[keyColumnIndex];
                         if (string.IsNullOrWhiteSpace(key)) continue;
                     
                         // Permite a mesma key em outros sheets; se quiser global único, mantenha esse HashSet:
@@ -160,9 +214,11 @@ namespace FineLocalization.Runtime
                         }
                         keys.Add(key);
                     
-                        for (var j = skip+1; j < header.Count; j++)
+                        for (var j = firstLanguageColumnIndex; j < header.Count; j++)
                         {
                             var lang = header[j];
+                            if (string.IsNullOrWhiteSpace(lang)) continue;
+
                             var value = j < cols.Count ? cols[j] : string.Empty;
                     
                             if (!Dictionary[lang].ContainsKey(key))
@@ -195,7 +251,10 @@ namespace FineLocalization.Runtime
                 Read();
 
             if (!Dictionary.ContainsKey(Language))
-                throw new KeyNotFoundException("Language not found: " + Language);
+            {
+                FineLocalizationLogger.LogWarning(() => $"[FineLocalization] Language not found: {Language}.");
+                return localizationKey;
+            }
 
             var exists = Dictionary[Language].TryGetValue(localizationKey, out var value);
 
@@ -230,8 +289,9 @@ namespace FineLocalization.Runtime
 
             // Preparar CSV atual do sheet
             var settings = LocalizationSettings.Instance;
+            var activeSources = settings.GetActiveSources();
             if (string.IsNullOrEmpty(sheetName))
-                sheetName = settings.Sources.FirstOrDefault()?.Sheets?.FirstOrDefault()?.Name;
+                sheetName = activeSources.FirstOrDefault()?.Sheets?.FirstOrDefault()?.Name;
 
             string currentCsv = null;
 
@@ -243,7 +303,7 @@ namespace FineLocalization.Runtime
 
             if (string.IsNullOrWhiteSpace(currentCsv))
             {
-                var sheet = settings.Sources
+                var sheet = activeSources
                     .SelectMany(s => s.Sheets)
                     .FirstOrDefault(s => s.Name == sheetName);
 
@@ -266,7 +326,10 @@ namespace FineLocalization.Runtime
             }
 
             var header = GetColumns(lines[0]); // Index, Key, lang...
-            if (header.Count < 2)
+            var keyColumnIndex = settings.skip;
+            var firstLanguageColumnIndex = keyColumnIndex + 1;
+
+            if (keyColumnIndex < 0 || header.Count <= firstLanguageColumnIndex)
             {
                 FineLocalizationLogger.LogError(() => $"[FineLocalization] Header inválido em `{sheetName}`.");
                 return;
@@ -292,7 +355,7 @@ namespace FineLocalization.Runtime
             for (int i = 1; i < lines.Count; i++)
             {
                 var cols = GetColumns(lines[i]);
-                if (cols.Count > 1 && string.Equals(cols[1], key, StringComparison.Ordinal))
+                if (cols.Count > keyColumnIndex && string.Equals(cols[keyColumnIndex], key, StringComparison.Ordinal))
                 {
                     while (cols.Count <= langIdx) cols.Add(string.Empty);
                     cols[langIdx] = value;
@@ -306,7 +369,7 @@ namespace FineLocalization.Runtime
             {
                 var newCols = new List<string>(header.Count);
                 for (int c = 0; c < header.Count; c++) newCols.Add(string.Empty);
-                newCols[1] = key;          // Key
+                newCols[keyColumnIndex] = key; // Key
                 newCols[langIdx] = value;  // Valor do idioma
                 lines.Add(SerializeRow(newCols));
             }
