@@ -46,7 +46,7 @@ namespace FineLocalization.EditorTools
 
                 if (activeSources == null || activeSources.Count == 0)
                 {
-                    Debug.LogWarning("[FineLocalization Editor] Nenhuma source ativa encontrada.");
+                    //Debug.LogWarning("[FineLocalization Editor] Nenhuma source ativa encontrada.");
                     return;
                 }
 
@@ -58,15 +58,15 @@ namespace FineLocalization.EditorTools
                 {
                     if (string.IsNullOrWhiteSpace(source.TableId))
                     {
-                        Debug.LogWarning("[FineLocalization Editor] Source ignorada: TableId vazio.");
+                        //Debug.LogWarning("[FineLocalization Editor] Source ignorada: TableId vazio.");
                         continue;
                     }
 
                     if (source.Sheets == null || source.Sheets.Count == 0)
                     {
-                        Debug.LogWarning(
+                        /*Debug.LogWarning(
                             $"[FineLocalization Editor] Source {source.TableId} ignorada: nenhuma sheet."
-                        );
+                        );*/
                         continue;
                     }
 
@@ -77,9 +77,9 @@ namespace FineLocalization.EditorTools
                         if (sheet.Id <= 0 ||
                             string.IsNullOrWhiteSpace(sheet.Name))
                         {
-                            Debug.LogWarning(
+                            /*Debug.LogWarning(
                                 "[FineLocalization Editor] Sheet ignorada: Id inválido ou Name vazio."
-                            );
+                            );*/
                             continue;
                         }
 
@@ -106,9 +106,9 @@ namespace FineLocalization.EditorTools
 
                 if (downloadedCsvs.Count == 0)
                 {
-                    Debug.LogWarning(
+                    /*Debug.LogWarning(
                         "[FineLocalization Editor] Nenhum CSV foi baixado. TXT de caracteres não foi gerado."
-                    );
+                    );*/
                     return;
                 }
 
@@ -122,11 +122,11 @@ namespace FineLocalization.EditorTools
 
                 AssetDatabase.Refresh();
 
-                Debug.Log(
+                /*Debug.Log(
                     $"[FineLocalization Editor] Concluído! " +
                     $"{downloadedCsvs.Count} CSV(s) atualizados e " +
                     $"{CharactersTxtFileName} gerado em:\n{OutputFolder}"
-                );
+                );*/
             }
             catch (Exception e)
             {
@@ -155,9 +155,9 @@ namespace FineLocalization.EditorTools
 
                 if (csvFiles.Length == 0)
                 {
-                    Debug.LogWarning(
+                    /*Debug.LogWarning(
                         $"[FineLocalization Editor] Nenhum CSV encontrado em {OutputFolder}."
-                    );
+                    );*/
                     return;
                 }
 
@@ -175,10 +175,10 @@ namespace FineLocalization.EditorTools
 
                 AssetDatabase.Refresh();
 
-                Debug.Log(
+                /*Debug.Log(
                     $"[FineLocalization Editor] TXT de caracteres regenerado a partir dos CSVs locais:\n" +
                     $"{Path.Combine(OutputFolder, CharactersTxtFileName)}"
-                );
+                );*/
             }
             catch (Exception e)
             {
@@ -211,10 +211,10 @@ namespace FineLocalization.EditorTools
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogWarning(
+                /*Debug.LogWarning(
                     $"[FineLocalization Editor] Falha ao baixar '{sheetName}'. " +
                     $"Erro: {request.error}"
-                );
+                );*/
                 return false;
             }
 
@@ -222,18 +222,18 @@ namespace FineLocalization.EditorTools
 
             if (string.IsNullOrWhiteSpace(csvContent))
             {
-                Debug.LogWarning(
+                /*Debug.LogWarning(
                     $"[FineLocalization Editor] CSV vazio recebido para '{sheetName}'."
-                );
+                );*/
                 return false;
             }
 
             if (csvContent.Contains("signin/identifier"))
             {
-                Debug.LogWarning(
+                /*Debug.LogWarning(
                     $"[FineLocalization Editor] Acesso negado à planilha de '{sheetName}'. " +
                     $"Verifique se ela está pública para exportação."
-                );
+                );*/
                 return false;
             }
 
@@ -276,10 +276,10 @@ namespace FineLocalization.EditorTools
                 Encoding.UTF8
             );
 
-            Debug.Log(
+            /*Debug.Log(
                 $"[FineLocalization Editor] Arquivo de caracteres criado com " +
                 $"{charactersBuilder.Length} caractere(s) únicos:\n{outputPath}"
-            );
+            );*/
         }
 
         private static void AddAsciiPrintableCharacters(

@@ -51,7 +51,7 @@ namespace FineLocalization.Scripts.Runtime
         {
             yield return null;
 
-            Debug.Log("[FineLocalization] Download em runtime desativado. Usando CSVs locais da build.");
+            //Debug.Log("[FineLocalization] Download em runtime desativado. Usando CSVs locais da build.");
 
             OnDownloadLocalizationComplete?.Invoke(true);
             OnAllSheetsDownloadedComplete?.Invoke(true);
@@ -75,7 +75,7 @@ namespace FineLocalization.Scripts.Runtime
 
                 if (string.IsNullOrEmpty(source.TableId) || source.Sheets.Count == 0)
                 {
-                    Debug.LogWarning("[FineLocalization] TableId ou Sheets estão vazios.");
+                    //Debug.LogWarning("[FineLocalization] TableId ou Sheets estão vazios.");
 
                     OnDownloadLocalizationComplete?.Invoke(false);
                     OnAllSheetsDownloadedComplete?.Invoke(false);
@@ -149,10 +149,10 @@ namespace FineLocalization.Scripts.Runtime
                         // Se cair em página de login, o arquivo não está público.
                         if (csvContent.Contains("signin/identifier"))
                         {
-                            Debug.LogWarning(
+                            /*Debug.LogWarning(
                                 $"[FineLocalization] Acesso negado ao documento: {sheetName}. " +
                                 $"Tentativa {attempt}/{attempts}."
-                            );
+                            );*/
                         }
                         else
                         {
@@ -162,10 +162,10 @@ namespace FineLocalization.Scripts.Runtime
                     }
                     else
                     {
-                        Debug.LogWarning(
+                        /*Debug.LogWarning(
                             $"[FineLocalization] Falha ao baixar {sheetName}. " +
                             $"Tentativa {attempt}/{attempts}. Erro: {request.error}"
-                        );
+                        );*/
                     }
                 }
 
@@ -173,9 +173,9 @@ namespace FineLocalization.Scripts.Runtime
                     yield return new WaitForSecondsRealtime(retryDelaySeconds);
             }
 
-            Debug.LogWarning(
+            /*Debug.LogWarning(
                 $"[FineLocalization] Não foi possível baixar {sheetName} após {attempts} tentativa(s)."
-            );
+            );*/
 
             onComplete?.Invoke(false, null);
         }
@@ -195,7 +195,7 @@ namespace FineLocalization.Scripts.Runtime
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[FineLocalization] Erro ao salvar CSV {fileName}: {e.Message}");
+                //Debug.LogWarning($"[FineLocalization] Erro ao salvar CSV {fileName}: {e.Message}");
             }
 
             yield return null;
@@ -244,7 +244,7 @@ namespace FineLocalization.Scripts.Runtime
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[FineLocalization] Erro ao limpar dados: {e.Message}");
+                //Debug.LogWarning($"[FineLocalization] Erro ao limpar dados: {e.Message}");
             }
         }
 
