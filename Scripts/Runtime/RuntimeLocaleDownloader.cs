@@ -104,7 +104,7 @@ namespace FineLocalization.Scripts.Runtime
                 // Debug.Log("[FineLocalization] Todos os sheets foram baixados com sucesso!");
 
                 // Atualiza o LocalizationManager para usar os CSVs recém-baixados
-                LocalizationManager.LoadFromCsvMap(new Dictionary<string, string>(_csvData));
+                LocalizationManager.LoadFromCsvMap(_csvData);
             }
         }
 
@@ -192,7 +192,7 @@ namespace FineLocalization.Scripts.Runtime
         private IEnumerator DownloadWithCallbackCoroutine(Action<bool, Dictionary<string, string>> callback)
         {
             yield return StartCoroutine(DownloadSheetsRuntime());
-            callback?.Invoke(_csvData.Count > 0, new Dictionary<string, string>(_csvData));
+            callback?.Invoke(_csvData.Count > 0, _csvData);
         }
     }
 }

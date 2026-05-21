@@ -46,10 +46,7 @@ namespace FineLocalization.Runtime
         /// </summary>
         public static void LoadFromCsvMap(Dictionary<string, string> csvBySheet)
         {
-            _runtimeCsvOverride = csvBySheet != null && csvBySheet.Count > 0
-                ? new Dictionary<string, string>(csvBySheet)
-                : null;
-
+            _runtimeCsvOverride = csvBySheet != null && csvBySheet.Count > 0 ? csvBySheet : null;
             ReloadAll();
         }
 
@@ -318,32 +315,43 @@ namespace FineLocalization.Runtime
 
         // --- CSV helpers ---
 
+        private static readonly Regex _quotedFieldRegex = new Regex("\"[\\s\\S]+?\"", RegexOptions.Compiled);
+        private static readonly char[] _cjkChars = { '。', '、', '：', '！', '（', '）' };
+
         public static List<string> GetLines(string text)
         {
             if (string.IsNullOrEmpty(text)) return new List<string>();
 
             text = text.Replace("\r\n", "\n").Replace("\"\"", "[_quote_]");
-            var matches = Regex.Matches(text, "\"[\\s\\S]+?\"");
 
-            foreach (Match match in matches)
+            // Single pass over quoted fields instead of N Replace() calls over the full text
+            text = _quotedFieldRegex.Replace(text, m =>
+                m.Value.Replace("\"", null)
+                       .Replace(",", "[_comma_]")
+                       .Replace("\n", "[_newline_]")
+            );
+
+            // CJK spacing via StringBuilder — avoids 6 successive string allocations
+            if (text.IndexOfAny(_cjkChars) >= 0)
             {
-                text = text.Replace(
-                    match.Value,
-                    match.Value.Replace("\"", null)
-                               .Replace(",", "[_comma_]")
-                               .Replace("\n", "[_newline_]")
-                );
+                var sb = new System.Text.StringBuilder(text.Length + 16);
+                foreach (char c in text)
+                {
+                    switch (c)
+                    {
+                        case '。': sb.Append("。 "); break;
+                        case '、': sb.Append("、 "); break;
+                        case '：': sb.Append("： "); break;
+                        case '！': sb.Append("！ "); break;
+                        case '（': sb.Append(" （"); break;
+                        case '）': sb.Append("） "); break;
+                        default:   sb.Append(c);    break;
+                    }
+                }
+                text = sb.ToString();
             }
 
-            // Espaços em idiomas CJK (mantendo sua lógica original)
-            text = text.Replace("。", "。 ")
-                       .Replace("、", "、 ")
-                       .Replace("：", "： ")
-                       .Replace("！", "！ ")
-                       .Replace("（", " （")
-                       .Replace("）", "） ")
-                       .Trim();
-
+            text = text.Trim();
             return text.Split('\n').Where(i => i != "").ToList();
         }
 
