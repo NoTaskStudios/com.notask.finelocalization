@@ -13,10 +13,6 @@ namespace FineLocalization.Editor
 
         public void OnPreprocessBuild(BuildReport report)
         {
-            var activeSources = settings.GetActiveSources();
-            if (activeSources == null || activeSources.Count == 0)
-                throw new BuildFailedException($"[FineLocalization] '{settings.Mode}' Sources estão vazios!");
-
             var settings = LocalizationSettings.Instance;
             var isDev = (report.summary.options & BuildOptions.Development) != 0;
             var expectedMode = isDev ? LocalizationSettings.LocalizationMode.Development : LocalizationSettings.LocalizationMode.Production;
