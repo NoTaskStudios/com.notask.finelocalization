@@ -76,7 +76,7 @@ namespace FineLocalization.Runtime
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
 
-                Debug.Log($"[FineLocalization] Criado novo LocalizationSettings em: {settingsPath}");
+                // Debug.Log($"[FineLocalization] Criado novo LocalizationSettings em: {settingsPath}");
             }
 
             // Garante que a pasta SaveFolder aponte corretamente
@@ -153,7 +153,7 @@ namespace FineLocalization.Runtime
                     var progress = (float)current / total;
                     var url = string.Format(UrlPattern, source.TableId, sheet.Id);
 
-                    Debug.Log($"Downloading <color=grey>{url}</color>");
+                    // Debug.Log($"Downloading <color=grey>{url}</color>");
 
                     var request = UnityWebRequest.Get(url);
 
@@ -172,7 +172,7 @@ namespace FineLocalization.Runtime
                         AssetDatabase.Refresh();
                         sheet.TextAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
                         EditorUtility.SetDirty(this);
-                        Debug.Log($"Sheet <color=yellow>{sheet.Name}</color> saved to <color=grey>{path}</color>");
+                        // Debug.Log($"Sheet <color=yellow>{sheet.Name}</color> saved to <color=grey>{path}</color>");
                     }
                     else
                     {
@@ -210,7 +210,7 @@ namespace FineLocalization.Runtime
             {
                 if (string.IsNullOrEmpty(source.TableId))
                 {
-                    Debug.LogWarning("Skipped empty TableId.");
+                    // Debug.LogWarning("Skipped empty TableId.");
                     continue;
                 }
 

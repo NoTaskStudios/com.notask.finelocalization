@@ -38,7 +38,7 @@ namespace FineLocalization.Editor
             if (activeSources == null || activeSources.Count == 0)
                 throw new BuildFailedException($"[Localization] '{settings.Mode}' Sources estão vazios! Configure antes de buildar.");
 
-            Debug.Log($"[Localization] Build iniciada com modo: <b>{settings.Mode}</b>");
+            // Debug.Log($"[Localization] Build iniciada com modo: <b>{settings.Mode}</b>");
         }
     }
 }
