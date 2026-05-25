@@ -18,21 +18,80 @@ namespace FineLocalization.Editor
             if (settings == null)
                 throw new BuildFailedException("[FineLocalization] LocalizationSettings nao encontrado.");
 
-            if (!EditorUtility.DisplayDialog(
-                    "Localization Settings",
-                    $"Current LocalizationSettings is \"{settings.name}\".\nMode: {settings.Mode}\n\nAre you sure you want to build with this localization setting?",
-                    "Yes",
-                    "No (Cancel build)"))
-                throw new BuildFailedException("Build cancelled (opted for changing localization)");
+            ConfirmModeForBuild(settings, report);
 
             var activeSources = settings.GetActiveSources();
-
             if (activeSources == null || activeSources.Count == 0)
-                throw new BuildFailedException($"[FineLocalization] Planilha '{settings.name}' esta vazia! Configure antes de buildar.");
+            {
+                throw new BuildFailedException(
+                    $"[FineLocalization] '{settings.name}' nao possui sources configuradas para o modo {settings.Mode}. Configure antes de buildar."
+                );
+            }
 
             ValidateSettingsForBuild(settings, report);
 
-            FineLocalizationLogger.Log(() => $"[FineLocalization] Build usando settings: {settings.name}");
+            FineLocalizationLogger.Log(
+                () => $"[FineLocalization] Build usando settings: '{settings.name}' | Mode: {settings.Mode}"
+            );
+        }
+
+        /// <summary>
+        /// Quando as planilhas estao em Development, oferece trocar para Production antes
+        /// de seguir com o build. Em Production, apenas pede confirmacao rapida.
+        /// </summary>
+        private static void ConfirmModeForBuild(LocalizationSettings settings, BuildReport report)
+        {
+            var isDevSettings = settings.Mode == LocalizationSettings.LocalizationMode.Development;
+            var isDevBuild = (report.summary.options & BuildOptions.Development) != 0;
+
+            if (isDevSettings)
+            {
+                var headline = isDevBuild
+                    ? "Build de desenvolvimento usando planilhas de Development."
+                    : "ATENCAO: Build de RELEASE usando planilhas de DEVELOPMENT.";
+
+                var choice = EditorUtility.DisplayDialogComplex(
+                    "Localization Mode",
+                    $"{headline}\n\n" +
+                    $"Settings: \"{settings.name}\"\n" +
+                    $"Mode atual: Development\n\n" +
+                    "Deseja trocar para Production antes do build?",
+                    "Trocar para Production e continuar",
+                    "Cancelar build",
+                    "Continuar com Development"
+                );
+
+                switch (choice)
+                {
+                    case 0:
+                        SwitchModeAndSave(settings, LocalizationSettings.LocalizationMode.Production);
+                        break;
+                    case 1:
+                        throw new BuildFailedException("Build cancelado pelo usuario na verificacao de Localization Mode.");
+                    case 2:
+                        // Mantem Development e segue.
+                        break;
+                }
+                return;
+            }
+
+            // Production: confirmacao rapida apenas.
+            var proceed = EditorUtility.DisplayDialog(
+                "Localization Settings",
+                $"Build usando \"{settings.name}\" em modo Production.\n\nContinuar?",
+                "Continuar",
+                "Cancelar"
+            );
+
+            if (!proceed)
+                throw new BuildFailedException("Build cancelado pelo usuario.");
+        }
+
+        private static void SwitchModeAndSave(LocalizationSettings settings, LocalizationSettings.LocalizationMode newMode)
+        {
+            settings.Mode = newMode;
+            EditorUtility.SetDirty(settings);
+            AssetDatabase.SaveAssetIfDirty(settings);
         }
 
         private static void ValidateSettingsForBuild(LocalizationSettings settings, BuildReport report)
