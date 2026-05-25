@@ -292,6 +292,29 @@ Adicione o componente `RemoteFontBundleLoader` na cena e configure:
 
 O loader observa `LocalizationManager.OnLocalizationChanged` e baixa automaticamente quando o idioma muda. Faz **uma única varredura** da cena e força rebuild dos textos ativos — sem `SetActive(false/true)` (que provoca reflow total).
 
+### Auto-detecção de script Latin (otimização)
+
+O loader detecta automaticamente se o idioma alvo usa **script Latin** (`en`, `pt`, `es`, `fr`, `de`, `it`, `nl`, `sv`, `pl`, `cs`, `tr`, `id`, `vi`, etc. — 50+ prefixos cobertos). Quando for, ele:
+
+- ✅ **Não faz request HTTP** (sem rede)
+- ✅ **Não baixa AssetBundle** (sem alocação/cache de bundle)
+- ✅ **Não força rebuild dos textos** (sem stall de UI)
+- ✅ Apenas retorna `onComplete(true)` instantaneamente
+
+Isso parte do princípio que **as fontes padrão do seu projeto já cobrem Latin + Latin Extended** (incluindo acentos `áéíóú`, `ç`, `ñ`, etc.) — o que é verdade pra 99% dos projetos Unity.
+
+### Quando ajustar a auto-detecção?
+
+No Inspector do `RemoteFontBundleLoader`, há um header **Script Detection (Optimization)** com:
+
+| Campo | O que faz |
+|-------|-----------|
+| `skipDownloadForLatinScripts` | Master toggle. **true** (default) → otimização ligada. **false** → todo idioma com config tenta baixar |
+| `extraLatinPrefixes` | Adicione prefixos extras a tratar como Latin (ex: `tlh`, `eo`) — não baixam bundle |
+| `forceRemoteFontPrefixes` | **Override**: força download mesmo para idiomas Latin. Use se sua fonte padrão é minimalista e não tem acentos completos (ex: `tr`, `vi`) |
+
+> 💡 Idiomas **não-Latin** (CJK, Árabe, Hebraico, Tailandês, Devanagari, Cirílico, Grego, etc.) **sempre** caem no fluxo de download — só procuram bundle se você tiver criado config pra eles no `RemoteFontBundleBuildConfig`.
+
 ---
 
 ## Import Local CSV → Locale Assets

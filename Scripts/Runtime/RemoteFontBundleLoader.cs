@@ -49,6 +49,42 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Tenta carregar a fonte do idioma atual quando este componente for habilitado.")]
         [SerializeField] private bool loadCurrentLanguageOnEnable = true;
 
+        [Header("Script Detection (Optimization)")]
+        [Tooltip("Quando marcado, idiomas de script Latin (en, pt, es, fr, de, ...) pulam o download — assume-se que as fontes do projeto já cobrem esses glyphs. Desligue se sua fonte padrão NÃO cobre acentos / caracteres latinos estendidos.")]
+        [SerializeField] private bool skipDownloadForLatinScripts = true;
+
+        [Tooltip("Prefixos extras que devem ser tratados como Latin (não baixar bundle). Use lowercase, sem region. Ex: 'tlh', 'eo'.")]
+        [SerializeField] private List<string> extraLatinPrefixes = new();
+
+        [Tooltip("Força o download do bundle para esses prefixos mesmo que sejam Latin. Use se sua fonte padrão é minimalista e não cobre acentos. Ex: 'tr', 'vi'.")]
+        [SerializeField] private List<string> forceRemoteFontPrefixes = new();
+
+        /// <summary>
+        /// ISO 639-1 codes that are written in Latin script. These are skipped by default
+        /// because typical Unity project fonts already cover Latin + Latin Extended.
+        /// Non-Latin scripts (CJK, Arabic, Hebrew, Thai, Devanagari, Cyrillic, Greek, etc.)
+        /// fall through to the download path.
+        /// </summary>
+        private static readonly HashSet<string> DefaultLatinScriptPrefixes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Western European
+            "en", "es", "pt", "fr", "de", "it", "nl", "ca", "gl", "eu", "oc", "rm",
+            // Nordic
+            "sv", "no", "nb", "nn", "da", "fi", "is", "fo",
+            // Central / Eastern European (Latin script)
+            "pl", "cs", "sk", "ro", "hu", "sl", "hr", "bs", "sq", "lt", "lv", "et",
+            // Turkic / others using Latin
+            "tr", "az", "uz", "tk", "kk",
+            // Southeast Asian (Latin alphabet)
+            "id", "ms", "vi", "tl", "fil",
+            // Celtic / British Isles
+            "ga", "cy", "gd", "br", "kw",
+            // African (Latin script)
+            "sw", "af", "zu", "xh", "yo", "ig", "ha", "so", "rw", "mg", "st", "sn", "ny",
+            // Misc Latin
+            "lb", "fy", "mt", "ku", "ht", "qu", "gn"
+        };
+
         private readonly HashSet<string> _loadedLanguages = new();
         private readonly HashSet<string> _loadingLanguages = new();
 
@@ -89,6 +125,19 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             var normalizedLanguage = language.Trim().ToLowerInvariant();
+
+            // Optimization: if the language uses Latin script (en, pt, es, fr, ...) we
+            // assume the project's bundled fonts already cover its glyphs. No network call,
+            // no AssetBundle download, no TMP rebuild — instant return.
+            if (IsLatinScript(normalizedLanguage))
+            {
+                FineLocalizationLogger.Log(
+                    () => $"[RemoteFontBundleLoader] '{normalizedLanguage}' usa script Latin — pulando download (fontes do projeto já cobrem)."
+                );
+                onComplete?.Invoke(true);
+                yield break;
+            }
+
             var config = FindConfig(normalizedLanguage);
 
             if (config == null)
@@ -279,6 +328,50 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Returns true if the given (already lowercased) language tag is written in Latin
+        /// script and therefore does not require a remote font download. Honors the
+        /// <see cref="skipDownloadForLatinScripts"/> master toggle, <see cref="extraLatinPrefixes"/>,
+        /// and the explicit <see cref="forceRemoteFontPrefixes"/> override.
+        /// </summary>
+        private bool IsLatinScript(string normalizedLanguage)
+        {
+            if (!skipDownloadForLatinScripts) return false;
+            if (string.IsNullOrEmpty(normalizedLanguage)) return false;
+
+            // Take only the root prefix ("en-us" → "en", "pt-br" → "pt").
+            var dashIndex = normalizedLanguage.IndexOf('-');
+            var rootPrefix = dashIndex >= 0
+                ? normalizedLanguage.Substring(0, dashIndex)
+                : normalizedLanguage;
+
+            // Explicit override wins: user can force a download for languages that ARE Latin
+            // but whose project font is too minimalistic (e.g. lacks diacritics).
+            if (MatchesAnyPrefix(forceRemoteFontPrefixes, rootPrefix, normalizedLanguage))
+                return false;
+
+            if (DefaultLatinScriptPrefixes.Contains(rootPrefix))
+                return true;
+
+            if (MatchesAnyPrefix(extraLatinPrefixes, rootPrefix, normalizedLanguage))
+                return true;
+
+            return false;
+        }
+
+        private static bool MatchesAnyPrefix(List<string> list, string rootPrefix, string normalizedLanguage)
+        {
+            if (list == null) return false;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var item = list[i]?.Trim().ToLowerInvariant();
+                if (string.IsNullOrEmpty(item)) continue;
+                if (item == rootPrefix || item == normalizedLanguage)
+                    return true;
+            }
+            return false;
         }
 
         private string GetBundleUrl(RemoteFontBundleConfig config, string prefix)
