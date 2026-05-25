@@ -1,7 +1,6 @@
-
 # FineLocalization (Unity)
 
-FineLocalization é um pacote leve e direto para projetos Unity, com foco em tornar a tradução multilíngue simples, prática e eficiente.
+FineLocalization é um pacote leve e direto para projetos Unity, com foco em tornar a tradução multilíngue **simples, prática e eficiente** — inclusive em **WebGL com 2 GB de RAM**.
 
 Através de uma planilha `.csv` com chaves e valores por idioma, o sistema permite que todos os textos do jogo sejam centralizados, gerenciados e atualizados de forma rápida — tanto durante o desenvolvimento quanto em produção.
 
@@ -9,35 +8,39 @@ Através de uma planilha `.csv` com chaves e valores por idioma, o sistema permi
 
 ## Principais funcionalidades
 
-- Tradução automática via planilha CSV com múltiplos idiomas  
-- Atualização dinâmica em runtime (ideal para WebGL, mobile e desktop)  
-- Importação/atualização manual via Editor com ferramenta no menu **Tools**  
-- Suporte completo ao **TextMeshPro**  
-- Componente de texto localizado via **Key** (ex: `menu.start`)  
-- Fallback automático quando uma chave está ausente  
-- Suporte a múltiplas fontes/tabelas (ex: diálogos, menus, sistema etc.)  
-- Evento para atualizar UI automaticamente quando o idioma muda:
+- 🌐 Tradução automática via planilha CSV com múltiplos idiomas
+- 🔁 Atualização dinâmica em runtime (WebGL, mobile, desktop)
+- 🪟 Janela Editor estilo planilha para edição rápida
+- 🛠️ Suporte completo ao **TextMeshPro** (incluindo fallbacks remotos para CJK/Árabe/etc.)
+- 🔑 Componente de texto localizado via **Key** (ex: `menu.start`)
+- 🔀 **Modo Production / Development** — duas listas de planilhas separadas, com troca a um clique
+- ✅ **Build processor** com proteção: avisa se você estiver tentando buildar Release com planilhas de Dev e oferece trocar
+- 📦 **Bundle Builder dinâmico** de fontes remotas para WebGL (qualquer idioma)
+- 🪄 Fallback automático quando uma chave está ausente (retorna a própria key)
+- ⚡ Otimizado para **WebGL/2 GB de RAM**: parser sem alocações desnecessárias, scans únicos da cena, sem cópias defensivas de dicionário
+- 📢 Eventos para reagir a download e troca de idioma:
   ```csharp
-  Action OnLocalizationChanged = () => { };
-
+  LocalizationManager.OnLocalizationChanged           // idioma trocou
+  RuntimeLocaleDownloader.OnDownloadLocalizationComplete   // download por source terminou
+  RuntimeLocaleDownloader.OnAllSheetsDownloadedComplete    // ciclo completo terminou
+  ```
 
 ---
 
 ## Para quem é este pacote?
 
-* Projetos Unity que precisam de localização multilíngue
-* Desenvolvedores que querem evitar duplicação de texto hardcoded
-* Equipes que precisam de flexibilidade para alterar textos em produção (runtime)
+- Projetos Unity que precisam de localização multilíngue
+- Times que querem evitar texto hardcoded
+- Times que precisam alterar textos **em produção sem rebuild**
+- Builds **WebGL com restrição de memória**
+
 ---
 
 ## Instalação
 
 ### Via UPM (Git)
 
-No Unity, abra:
 **Window → Package Manager → + → Add package from git URL...**
-
-Cole:
 
 ```
 https://github.com/NoTaskStudios/com.notask.finelocalization.git
@@ -45,129 +48,307 @@ https://github.com/NoTaskStudios/com.notask.finelocalization.git
 
 ### Importação manual
 
-<img width="415" height="114" alt="5d4798df-a692-4bb8-91e8-2b484d5f6a4f" src="https://github.com/user-attachments/assets/eeb0bc14-fc19-4d12-b74b-c1113d22ec90" /> 
+Você também pode baixar o repositório e copiar para a pasta `Packages/` do seu projeto.
 
+---
 
+## Visão geral do menu
 
-Você também pode baixar o repositório e importar no projeto (caso prefira).
+Tudo fica em **`Tools → Fine Localization`**:
+
+```
+Tools/Fine Localization/
+├── Open Localization Editor              ← janela principal (estilo planilha)
+├── Open Settings Inspector               ← abre o ScriptableObject de Settings
+├── Language Picker (Preview)             ← troca idioma no Editor
+│
+├── Sheets/
+│   ├── Sync from Google (Download + Characters)
+│   ├── Regenerate Characters from Saved CSVs
+│   └── Generate Latin Base Characters
+│
+├── Import Local CSV → Locale Assets      ← importa CSV local → Locale ScriptableObjects
+│
+├── WebGL Remote Fonts/
+│   ├── Open Bundle Builder Window
+│   └── Build Bundles Now
+│
+├── Migrate Legacy Components             ← migra componentes do pacote antigo
+├── Reset Settings to Defaults
+└── Documentation
+```
 
 ---
 
 ## Setup no Editor
 
-### 1) Abrir o menu e definir Table IDs
+### 1) Criar o asset de Settings
 
-Vá até:
-**Tools → Fine Localization**
+Na primeira vez que você abrir uma das janelas, o asset `LocalizationSettings` é criado automaticamente em `Assets/FineLocalization/Resources/`.
 
-No painel, encontre **Table IDs** e informe o(s) identificador(es) das tabelas que deseja usar no projeto.
+Você pode abri-lo direto via **Tools → Fine Localization → Open Settings Inspector**.
 
-Você pode usar mais de um Table ID, por exemplo:
+### 2) Escolher o Mode (Production / Development)
 
-* Planilha 1: regras
-* Planilha 2: erros
+No Inspector do `LocalizationSettings`, há um banner colorido no topo:
 
-> Onde encontrar o Table ID:
-<img width="606" height="30" alt="277aec4f-947b-4d13-8211-c6fe1370f6f1" src="https://github.com/user-attachments/assets/16eb8a81-6c46-4213-9bde-2d5c74085d7f" />
+- 🟢 **PRODUCTION** — usa a lista `Sources` (planilhas estáveis para release)
+- 🟠 **DEVELOPMENT** — usa a lista `DevSources` (planilhas em andamento, traduções em revisão)
 
-<img width="449" height="132" alt="a4522aab-5575-4030-9822-738d4bdf688c" src="https://github.com/user-attachments/assets/007d82b1-5f4b-4e92-806d-6be95d197db6" />
+Clique no botão **→ Switch to Production / Development** para alternar.
+
+> A lista ativa aparece com fundo azul e contadores `[ X sources / Y sheets / Z downloaded ]`. A lista inativa fica num foldout fechado.
+
+### 3) Adicionar Table IDs
+
+Em cada source da lista ativa, informe o **Table ID** da planilha do Google Sheets.
+
+> Onde encontrar o Table ID: na URL da planilha, a parte entre `/d/` e `/edit`.
+
+### 4) Resolver Sheets
+
+Clique em **↺ Resolve Sheets**. O sistema busca todas as abas (sheets) disponíveis do Table ID.
+
+### 5) Baixar as planilhas
+
+Defina **Save Folder** (não use a pasta do package em `Packages/...`).
+Recomendado: `Assets/FineLocalization/Resources/Localization/`.
+
+Clique em **▼ Download Sheets**. Os CSVs são salvos como TextAssets.
 
 ---
 
-### 2) Resolver Sheets
+## Modes & Build Processor
 
-Clique em **Resolve Sheets**.
+### Como funciona o switch automático
 
-Isso busca automaticamente todas as planilhas disponíveis para os Table IDs fornecidos.
-Depois disso, selecione manualmente quais planilhas pertencem a este projeto.
+Quando você inicia um build, o `LocalizationBuildProcessor` checa o mode atual:
 
----
+**Se estiver em Development:**
+- Aparece um dialog com 3 opções:
+  1. **Trocar para Production e continuar** (recomendado para release)
+  2. **Cancelar build**
+  3. **Continuar com Development** (use se intencional)
+- Se for um build de **Release** (não-Development), o dialog avisa em destaque.
 
-### 3) Baixar as planilhas
+**Se estiver em Production:**
+- Confirmação rápida ("Continuar / Cancelar").
 
-Escolha a pasta onde as planilhas serão baixadas.
+Quando você escolhe "Trocar para Production", o asset é salvo automaticamente antes do build prosseguir.
 
-**Importante:** não baixe na pasta padrão:
+### Validações automáticas no build
 
-* `Packages/Fine Localization/Resources/Localization`
+Antes de gerar a build, o processor valida:
+- Existe alguma source ativa?
+- Todas as sheets têm `TextAsset` (obrigatório em **WebGL**, pois não há download de build)?
+- Cada CSV tem header válido (`<colunas-ignoradas>,Key,<langs...>`)?
+- Há idiomas duplicados?
 
-Depois, clique em **Download**.
-
-As planilhas selecionadas serão baixadas e armazenadas localmente no projeto, prontas para uso pelo sistema de localização.
+Se alguma checagem falhar, o build é cancelado com mensagem clara.
 
 ---
 
 ## Usando no jogo
 
-### Traduzir textos com LocaleComponent
+### Localizar um TMP_Text
 
-Para cada elemento de texto (ex: `TextMeshProUGUI`) que precisa de tradução:
+1. Adicione o componente `LocalizedText` (ou `LocaleComponent` para projetos legados) no GameObject que tem o `TextMeshProUGUI`.
+2. Preencha o campo **Key** com a chave correspondente (ex: `menu.start`).
 
-1. Adicione o componente `LocaleComponent.cs`
-2. Preencha o campo **Key** com a chave correspondente da planilha
+O texto é atualizado automaticamente quando o idioma muda.
 
-Exemplo:
+### Via script
 
-* `Key: menu.start`
+```csharp
+using FineLocalization.Runtime;
 
-O sistema atualizará automaticamente o texto de acordo com o idioma ativo.
+// Buscar uma tradução
+string label = LocalizationManager.Localize("menu.start");
 
-> Também é possível usar por script (dependendo do seu fluxo).
+// Com formatação
+string greeting = LocalizationManager.Localize("greeting.user", "Valdeci");
+
+// Trocar idioma
+LocalizationManager.Language = "pt-br";
+```
 
 ---
 
-## Runtime (WebGL / Mobile / Desktop)
+## Runtime: download + bundled CSVs (WebGL/Mobile/Desktop)
 
-### Configurar o RuntimeDownloader
+Adicione o componente `RuntimeLocaleDownloader` em um GameObject persistente da cena.
 
-Adicione um GameObject vazio na cena e anexe:
+### Opções no Inspector
 
-* `LocaleRuntimeDownloader.cs`
+| Campo | O que faz |
+|-------|-----------|
+| `downloadOnStart` | Se **true**, baixa as planilhas no `Start()`. Se **false**, usa direto os TextAssets bundled e dispara os eventos como se tivesse baixado |
+| `allowDirectGoogleDownloadInWebGL` | Em WebGL, Google Sheets bloqueia por CORS. Mantenha **false** a menos que seu deploy confirme que funciona |
+| `csvUrlPatternOverride` | URL alternativa (proxy/CDN com CORS) — use `{0}` para TableId e `{1}` para gid |
+| `maxDownloadAttempts` | Quantas tentativas por sheet |
+| `requestTimeoutSeconds` | Timeout HTTP |
+| `retryDelaySeconds` | Espera entre tentativas |
+| `delayBetweenSheets` | Espera entre downloads de sheets |
+| `remoteFontBundleLoader` | (opcional) Carrega bundle de fonte remoto antes de aplicar a tradução |
 
-Nele você define se o download das tabelas deve ser feito:
+### Padrão recomendado para subscribers
 
-* ✅ Automaticamente no `Start()` quando o jogador abre o jogo
-* 🛠️ Manualmente, apenas no Editor, quando o desenvolvedor decidir atualizar
+Para que **componentes que se registram tarde** (depois do evento já ter disparado) também sejam notificados, use o padrão com a flag estática `IsLocalizationReady`:
+
+```csharp
+using FineLocalization.Scripts.Runtime;
+
+public class MyUI : MonoBehaviour
+{
+    private void Awake()
+    {
+        RuntimeLocaleDownloader.OnAllSheetsDownloadedComplete += OnLocReady;
+
+        // Cobre o caso de chegarmos tarde — a flag estática diz se o
+        // evento já disparou antes deste Awake rodar.
+        if (RuntimeLocaleDownloader.IsLocalizationReady)
+            OnLocReady(RuntimeLocaleDownloader.LastLocalizationSucceeded);
+    }
+
+    private void OnDestroy()
+    {
+        RuntimeLocaleDownloader.OnAllSheetsDownloadedComplete -= OnLocReady;
+    }
+
+    private void OnLocReady(bool success)
+    {
+        if (!success) return;
+        // Construa sua UI usando LocalizationManager.Localize(...)
+    }
+}
+```
+
+> Os eventos `OnDownloadLocalizationComplete` e `OnAllSheetsDownloadedComplete` disparam **igual** quando `downloadOnStart = false` — usando os CSVs bundled. Projetos antigos não quebram.
+
+### Reagir a troca de idioma
+
+```csharp
+private void OnEnable()
+{
+    LocalizationManager.OnLocalizationChanged += Refresh;
+}
+
+private void OnDisable()
+{
+    LocalizationManager.OnLocalizationChanged -= Refresh;
+}
+
+private void Refresh()
+{
+    label.text = LocalizationManager.Localize(_key);
+}
+```
+
+---
+
+## Remote Fonts (WebGL) — fontes sob demanda para CJK/Árabe/etc.
+
+Idiomas com **muitos glyphs** (chinês, japonês, coreano, tailandês, árabe, hindi…) inflam o tamanho da build se as fontes forem bundled. A solução: **bundles separados por idioma**, baixados sob demanda.
+
+### Configurar bundles
+
+1. **Tools → Fine Localization → WebGL Remote Fonts → Open Bundle Builder Window**
+2. Na primeira vez, o asset `RemoteFontBundleBuildConfig` é criado automaticamente em `Assets/FineLocalization/Editor/`.
+3. Para cada idioma:
+   - Defina **Bundle name** (ex: `font_ar`, `font_he`, `font_vi`)
+   - Arraste a **pasta** que contém os `TMP_FontAsset` desse idioma
+   - A janela valida e mostra `✔ N TMP_FontAsset(s) em '...'`
+4. Clique em **▶ Build WebGL Bundles**.
+
+> A lista é totalmente dinâmica — adicione/remova quantos idiomas quiser. **Nada é hardcoded.**
+
+### Usar em runtime
+
+Adicione o componente `RemoteFontBundleLoader` na cena e configure:
+- `baseBundleUrl` — URL do CDN onde os bundles foram hospedados
+- `bundles` — lista de configs (prefixo de idioma + nome do TMP_FontAsset dentro do bundle)
+- `mainFontAssets` — fontes principais que recebem o fallback
+- `addToGlobalTmpFallbacks` — adiciona ao TMP_Settings globalmente
+
+O loader observa `LocalizationManager.OnLocalizationChanged` e baixa automaticamente quando o idioma muda. Faz **uma única varredura** da cena e força rebuild dos textos ativos — sem `SetActive(false/true)` (que provoca reflow total).
+
+---
+
+## Import Local CSV → Locale Assets
+
+Para projetos que **não usam Google Sheets** e têm CSVs locais:
+
+1. **Tools → Fine Localization → Import Local CSV → Locale Assets**
+2. Clique em **Load CSV** e selecione o arquivo
+3. Clique em **Generate Scriptable Object** — gera um `Locale` ScriptableObject por coluna de idioma
 
 ---
 
 ## Configuração extra: Skip Columns
 
-Algumas planilhas podem ter colunas adicionais antes de `Key` (ex: ID interno, comentários, metadados).
-Para ignorar essas colunas, o FineLocalization permite configurar **Skip**, que define quantas colunas devem ser ignoradas antes da coluna `Key`.
+Algumas planilhas têm colunas extras antes da `Key` (ID interno, comentários, metadados).
+Para ignorá-las, configure **Skip** no `LocalizationSettings`.
 
-Essa configuração fica em:
+### Exemplo
 
-* `Resources/LocalizationSettings.asset`
-
-Durante o carregamento, o sistema ignora automaticamente as colunas especificadas.
-
-### Exemplo prático
-
-| ID | Tipo | Key        | pt-BR   | en-US |
-| -- | ---- | ---------- | ------- | ----- |
+| ID | Tipo | Key        | pt-br   | en-us |
+|----|------|------------|---------|-------|
 | 01 | UI   | menu.start | Iniciar | Start |
 | 02 | UI   | menu.exit  | Sair    | Exit  |
 
-Nesse caso, existem **duas** colunas extras antes de `Key` (`ID` e `Tipo`), então:
-
-* `Skip = 2`
+Existem 2 colunas extras antes de `Key` → **`Skip = 2`**.
 
 ---
 
-## Configuração extra: Forçar linguagem no Editor
+## Configuração extra: EnableLogs
 
-Durante o desenvolvimento, é útil testar diferentes idiomas direto no Editor, sem alterar arquivos externos.
+No `LocalizationSettings` há um toggle **Enable Logs**.
 
-Para isso existe o **Force Editor Language** (apenas para Play Mode no Editor).
+- **Em desenvolvimento**: mantenha ligado para ver warnings/erros.
+- **Em release/WebGL**: **desligue** para silenciar todos os logs do FineLocalization globalmente — economiza CPU e reduz string allocations no console.
 
-### Como usar
+---
 
-Vá até:
-**Tools → Fine Localization → Settings**
+## Performance / WebGL com 2 GB de RAM
 
-1. Encontre **Force Editor Language**
-2. Selecione o idioma desejado (ex: `pt-BR`, `en-US`)
-3. Dê Play: o idioma será aplicado imediatamente
+Boas práticas já aplicadas no pacote (você não precisa fazer nada extra):
 
-> Isso não afeta builds em produção. Serve apenas para testes no Editor.
+- `Regex` cacheado como `static readonly` no parser CSV
+- `Regex.Replace` com `MatchEvaluator` (single pass) em vez de N `Replace()` no texto inteiro
+- `StringBuilder` para concatenação em loops (parser e substituições CJK)
+- Sem cópias defensivas de dicionário em `LoadFromCsvMap`
+- `RemoteFontBundleLoader` faz **uma única varredura da cena** (com `FindObjectsByType` quando disponível), deduplicando fontes via `HashSet` estático reutilizável
+- `RemoteFontBundleLoader` **não** toggla `SetActive(false/true)` em todos os textos — só `ForceMeshUpdate`
+- Logs gateados por `EnableLogs` via `FineLocalizationLogger` (zero-alloc quando off)
+- Build processor exige TextAssets bundled em WebGL — evita falhas em runtime quando o CDN está fora
+
+### Recomendações de projeto
+
+1. **Desligue `EnableLogs`** nas builds de release
+2. Use **`downloadOnStart = false`** em WebGL se você bundleou os CSVs como TextAsset (mais rápido — sem rede)
+3. Use **Remote Fonts** para idiomas com muitos glyphs
+4. Mantenha as planilhas **enxutas** — uma chave por linha; evite valores vazios desnecessários
+5. Configure `delayBetweenSheets` entre 0.05–0.1s para não saturar a stack de rede em mobile
+
+---
+
+## Migração de pacote antigo
+
+Se você usava o pacote `com.notask.simplelocalization` (legacy):
+
+**Tools → Fine Localization → Migrate Legacy Components**
+
+A janela varre o projeto e converte automaticamente os `LocaleComponent` antigos para os novos.
+
+---
+
+## Licença
+
+Veja `LICENSE` no repositório.
+
+---
+
+## Links
+
+- 🐛 [Issues](https://github.com/NoTaskStudios/com.notask.finelocalization/issues)
+- 📦 [Releases](https://github.com/NoTaskStudios/com.notask.finelocalization/releases)

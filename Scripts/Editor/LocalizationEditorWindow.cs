@@ -40,7 +40,7 @@ namespace FineLocalization.Editor
             LocalizationSettings.OnRunEditor += Open;
         }
 
-        [MenuItem("Tools/Fine Localization/Windows/Localization Editor", false, 9)]
+        [MenuItem("Tools/Fine Localization/Open Localization Editor", false, 0)]
         public static void Open()
         {
             if (_window == null)

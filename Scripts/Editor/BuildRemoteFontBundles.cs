@@ -17,7 +17,7 @@ namespace FineLocalization.EditorTools
     {
         private const string DefaultOutputFolder = "AssetBundles/WebGL/Fonts";
 
-        [MenuItem("Tools/Fine Localization/Remote Fonts/Build WebGL AssetBundles", false, 201)]
+        [MenuItem("Tools/Fine Localization/WebGL Remote Fonts/Build Bundles Now", false, 61)]
         public static void BuildWebGlFontBundles()
         {
             var config = RemoteFontBundleBuildConfig.GetOrCreate();

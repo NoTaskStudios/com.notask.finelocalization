@@ -12,15 +12,20 @@ namespace FineLocalization.Editor.Build
         private string csvPath = string.Empty;
         private string[,] csv;
 
-        [MenuItem("Tools/Fine Localization/Windows/Locale Creator", false, 12)]
+        [MenuItem("Tools/Fine Localization/Import Local CSV → Locale Assets", false, 40)]
         public static void ShowWindow()
         {
-            GetWindow<LocaleCreatorWindow>("Locale Creator");
+            GetWindow<LocaleCreatorWindow>("Local CSV Importer");
         }
 
         private void OnGUI()
         {
-            GUILayout.Label("Load Locale From CSV", EditorStyles.boldLabel);
+            GUILayout.Label("Generate Locale assets from a local .csv file", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Selecione um arquivo .csv local. Para cada coluna de idioma, será gerado um Locale ScriptableObject.\n" +
+                "Use este atalho apenas quando precisar importar uma planilha que não vem do Google Sheets.",
+                MessageType.Info
+            );
 
             if (GUILayout.Button("Load CSV"))
             {

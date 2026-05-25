@@ -37,8 +37,21 @@ namespace FineLocalization.Scripts.Runtime
         private const string UrlPattern =
             "https://docs.google.com/spreadsheets/d/{0}/export?format=csv&gid={1}";
 
-        public static event Action<bool> OnDownloadLocalizationComplete = success => { };
-        public static event Action<bool> OnAllSheetsDownloadedComplete;
+        public static event Action<bool> OnDownloadLocalizationComplete = _ => { };
+        public static event Action<bool> OnAllSheetsDownloadedComplete = _ => { };
+
+        /// <summary>
+        /// True once localization has been wired up at least once (either via Google Sheets
+        /// download, persisted CSVs on disk, or bundled TextAssets). Late subscribers can read
+        /// this flag and skip waiting for the event if they registered after it fired.
+        /// </summary>
+        public static bool IsLocalizationReady { get; private set; }
+
+        /// <summary>
+        /// True when the last completed cycle ended in success. Useful for late subscribers that
+        /// want to mirror the last <see cref="OnDownloadLocalizationComplete"/> result.
+        /// </summary>
+        public static bool LastLocalizationSucceeded { get; private set; }
 
         private readonly Dictionary<string, string> _csvData = new();
 
@@ -53,10 +66,16 @@ namespace FineLocalization.Scripts.Runtime
                 StartCoroutine(NotifyLocalizationAlreadyReady());
             }
         }
+        /// <summary>
+        /// Quando o usuário marcou <see cref="downloadOnStart"/> = false, ainda precisamos
+        /// notificar os componentes legados que se inscrevem em
+        /// <see cref="OnDownloadLocalizationComplete"/> / <see cref="OnAllSheetsDownloadedComplete"/>.
+        /// Esperamos 1 frame para garantir que todos os Awake/Start tiveram chance de se inscrever
+        /// antes do evento ser disparado.
+        /// </summary>
         private IEnumerator NotifyLocalizationAlreadyReady()
         {
             yield return null;
-
             UseBundledCsvs();
         }
         /// <summary>
@@ -143,7 +162,9 @@ namespace FineLocalization.Scripts.Runtime
                 }
             }
 
-            OnAllSheetsDownloadedComplete?.Invoke(allSourcesSuccess && _csvData.Count > 0);
+            var fullSuccess = allSourcesSuccess && _csvData.Count > 0;
+            MarkReady(fullSuccess);
+            OnAllSheetsDownloadedComplete?.Invoke(fullSuccess);
         }
 
         private bool ShouldUseBundledCsvs()
@@ -156,6 +177,11 @@ namespace FineLocalization.Scripts.Runtime
 #endif
         }
 
+        /// <summary>
+        /// Pula o download remoto e usa os CSVs já presentes no projeto (TextAsset bundled
+        /// ou CSV persistido no disco/IndexedDB). Sempre dispara os mesmos eventos do fluxo
+        /// de download bem-sucedido, garantindo compatibilidade com projetos antigos.
+        /// </summary>
         private void UseBundledCsvs()
         {
             LocalizationManager.RuntimeCsvResolver = GetCsvContent;
@@ -163,11 +189,18 @@ namespace FineLocalization.Scripts.Runtime
             LocalizationManager.ReloadAll();
 
             FineLocalizationLogger.Log(
-                "[FineLocalization] Runtime Google Sheets download skipped on WebGL. Using bundled CSV TextAssets."
+                "[FineLocalization] Using bundled CSV TextAssets (downloadOnStart = false or WebGL CORS fallback)."
             );
 
+            MarkReady(true);
             OnDownloadLocalizationComplete?.Invoke(true);
             OnAllSheetsDownloadedComplete?.Invoke(true);
+        }
+
+        private static void MarkReady(bool success)
+        {
+            IsLocalizationReady = true;
+            LastLocalizationSucceeded = success;
         }
 
         private string BuildCsvUrl(string tableId, long sheetId)

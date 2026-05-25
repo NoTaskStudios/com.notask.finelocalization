@@ -45,7 +45,7 @@ namespace FineLocalization.EditorTools
             "ºª°§©®™…–—•" +
             "€£¥₩₹₽";
 
-        [MenuItem("Tools/Fine Localization/Sync/Update CSVs + Character TXTs", false, 100)]
+        [MenuItem("Tools/Fine Localization/Sheets/Sync from Google (Download + Characters)", false, 20)]
         public static void SyncCsvsAndGenerateCharactersTxt()
         {
             try
@@ -151,7 +151,7 @@ namespace FineLocalization.EditorTools
             }
         }
 
-        [MenuItem("Tools/Fine Localization/Characters/Generate From Saved CSVs", false, 150)]
+        [MenuItem("Tools/Fine Localization/Sheets/Regenerate Characters from Saved CSVs", false, 21)]
         public static void GenerateCharactersTxtFromSavedCsvs()
         {
             try
@@ -200,7 +200,7 @@ namespace FineLocalization.EditorTools
             }
         }
 
-        [MenuItem("Tools/Fine Localization/Characters/Generate Latin Base", false, 151)]
+        [MenuItem("Tools/Fine Localization/Sheets/Generate Latin Base Characters", false, 22)]
         public static void GenerateLatinBaseCharactersTxtMenu()
         {
             try
