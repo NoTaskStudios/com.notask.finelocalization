@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace FineLocalization.Editor
 {
@@ -55,49 +56,49 @@ namespace FineLocalization.Editor
         {
             int currentID = 0;
             string[] splitData = new string[collumnCount];
-            string raw = string.IsNullOrEmpty(cashedLine)? reader.ReadLine() : cashedLine;
+            string raw = string.IsNullOrEmpty(cashedLine) ? reader.ReadLine() : cashedLine;
 
             bool foundQuote = false;
-            string data = "";
+            var data = new StringBuilder();
 
             while (currentID < collumnCount)
             {
-                if(raw == null) break;
-                
+                if (raw == null) break;
+
                 for (int i = 0; i < raw.Length; i++)
                 {
                     if (raw[i] == ',' && !foundQuote)
                     {
-                        splitData[currentID] = data;
+                        splitData[currentID] = data.ToString();
                         currentID++;
-                        data = "";
+                        data.Clear();
                     }
                     else if (raw[i] == '\"')
                     {
                         if (IsQuote(raw, i, foundQuote))
                         {
-                            data += raw[i];
+                            data.Append(raw[i]);
                             i++;
                         }
                         else foundQuote = !foundQuote;
                     }
                     else
                     {
-                        data += raw[i];
+                        data.Append(raw[i]);
                     }
                 }
 
                 if (currentID < collumnCount - 1)
                 {
-                    data += "\n";
+                    data.Append('\n');
                     raw = reader.ReadLine();
                 }
                 else
                 {
-                    CheckNextLine(reader, ref data, foundQuote);
-                    splitData[currentID] = data;
+                    CheckNextLine(reader, data, foundQuote);
+                    splitData[currentID] = data.ToString();
                     currentID++;
-                    data = "";
+                    data.Clear();
                 }
             }
 
@@ -106,17 +107,17 @@ namespace FineLocalization.Editor
 
         private static bool IsQuote(string raw, int id,bool foundQuote) => foundQuote && id + 1 < raw.Length && raw[id + 1] == '\"';
 
-        private static void CheckNextLine(StreamReader reader, ref string currentData,bool insideQuote)
+        private static void CheckNextLine(StreamReader reader, StringBuilder currentData, bool insideQuote)
         {
             if (reader.EndOfStream) return;
             bool foundQuote = insideQuote;
             string raw = reader.ReadLine();
-            string potentialData = "";
+            var potentialData = new StringBuilder();
             bool isNewLine = false;
 
             while (!isNewLine)
             {
-                potentialData += "\n";
+                potentialData.Append('\n');
                 for (int i = 0; i < raw.Length; i++)
                 {
                     if (raw[i] == ',' && !foundQuote)
@@ -128,22 +129,22 @@ namespace FineLocalization.Editor
                     {
                         if (IsQuote(raw, i, foundQuote))
                         {
-                            potentialData += raw[i];
+                            potentialData.Append(raw[i]);
                             i++;
                         }
                         else foundQuote = !foundQuote;
                     }
                     else
                     {
-                        potentialData += raw[i];
+                        potentialData.Append(raw[i]);
                     }
                 }
 
                 if (!isNewLine)
                 {
-                    currentData += potentialData;
-                    potentialData = "";
-                    raw = reader.ReadLine(); 
+                    currentData.Append(potentialData);
+                    potentialData.Clear();
+                    raw = reader.ReadLine();
                 }
                 else cashedLine = raw;
             }

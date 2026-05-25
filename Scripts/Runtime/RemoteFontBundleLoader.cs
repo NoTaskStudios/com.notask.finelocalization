@@ -209,10 +209,8 @@ namespace FineLocalization.Scripts.Runtime
                     $"Character Count: {fontAsset.characterTable?.Count ?? 0} | " +
                     $"Glyph Count: {fontAsset.glyphTable?.Count ?? 0}"
             );
-            Debug.Log($"[RemoteFontBundleLoader] >>> VAI REGISTRAR FALLBACK: {fontAsset.name}");
             RegisterFallback(fontAsset);
-            Debug.Log($"[RemoteFontBundleLoader] >>> FALLBACK REGISTRADO");
-            yield return StartCoroutine(ForceRebuildAllTexts());
+            yield return StartCoroutine(ApplyFallbackToSceneAndRebuild(fontAsset));
 
             FineLocalizationLogger.Log(
                 () => $"[RemoteFontBundleLoader] Fonte registrada como fallback: {fontAsset.name}"
@@ -225,28 +223,46 @@ namespace FineLocalization.Scripts.Runtime
 
             onComplete?.Invoke(true);
         }
-        private IEnumerator ForceRebuildAllTexts()
+        // Reusable buffer to avoid HashSet alloc per call.
+        private static readonly HashSet<TMP_FontAsset> _seenFontsBuffer = new();
+
+        /// <summary>
+        /// Single scene scan: dedupes fonts (so each font's fallback table is touched once),
+        /// then forces mesh update on each active text. Avoids the triple
+        /// Resources.FindObjectsOfTypeAll scan and the SetActive(false/true) toggle which
+        /// forced a full layout rebuild on every TMP_Text — both extremely expensive on WebGL/2GB devices.
+        /// </summary>
+        private IEnumerator ApplyFallbackToSceneAndRebuild(TMP_FontAsset fontAsset)
         {
             yield return null;
 
-            foreach (var text in Resources.FindObjectsOfTypeAll<TMP_Text>())
+#if UNITY_2022_2_OR_NEWER
+            var texts = UnityEngine.Object.FindObjectsByType<TMP_Text>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+#else
+            var texts = UnityEngine.Object.FindObjectsOfType<TMP_Text>(true);
+#endif
+
+            if (addToActiveTextFonts)
             {
-                if (text == null || !text.gameObject.activeInHierarchy) continue;
-                
-                Debug.Log($"[FontDebug] Text: '{text.text}' | Font: {text.font?.name} | Fallbacks: {text.font?.fallbackFontAssetTable?.Count ?? 0}");
-                
-                text.SetAllDirty();
-                text.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+                _seenFontsBuffer.Clear();
+                for (int i = 0; i < texts.Length; i++)
+                {
+                    var t = texts[i];
+                    if (t == null || t.font == null) continue;
+                    if (_seenFontsBuffer.Add(t.font))
+                        AddFallbackToFont(t.font, fontAsset);
+                }
+                _seenFontsBuffer.Clear();
             }
 
-            yield return null;
-
-            foreach (var text in Resources.FindObjectsOfTypeAll<TMP_Text>())
+            for (int i = 0; i < texts.Length; i++)
             {
-                if (text == null || !text.gameObject.activeInHierarchy) continue;
-                var go = text.gameObject;
-                go.SetActive(false);
-                go.SetActive(true);
+                var t = texts[i];
+                if (t == null || !t.gameObject.activeInHierarchy) continue;
+
+                t.havePropertiesChanged = true;
+                t.ForceMeshUpdate(ignoreActiveState: false, forceTextReparsing: true);
             }
         }
         private RemoteFontBundleConfig FindConfig(string language)
@@ -291,15 +307,8 @@ namespace FineLocalization.Scripts.Runtime
             foreach (var mainFont in mainFontAssets)
                 AddFallbackToFont(mainFont, fontAsset);
 
-            if (addToActiveTextFonts)
-            {
-                foreach (var text in Resources.FindObjectsOfTypeAll<TMP_Text>())
-                {
-                    if (text == null || text.font == null) continue;
-                    AddFallbackToFont(text.font, fontAsset);
-                    // NÃO chame ForceMeshUpdate aqui
-                }
-            }
+            // Scene-text fallback registration moved to ApplyFallbackToSceneAndRebuild
+            // (single dedup'd scan instead of one AddFallbackToFont call per text).
 
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, fontAsset);
         }

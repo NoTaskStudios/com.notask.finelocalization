@@ -139,7 +139,7 @@ namespace FineLocalization.Scripts.Runtime
                         yield return remoteFontBundleLoader.EnsureFontForLanguage(LocalizationManager.Language);
                     }
 
-                    LocalizationManager.LoadFromCsvMap(new Dictionary<string, string>(_csvData));
+                    LocalizationManager.LoadFromCsvMap(_csvData);
                 }
             }
 
@@ -326,10 +326,7 @@ namespace FineLocalization.Scripts.Runtime
         {
             yield return StartCoroutine(DownloadSheetsRuntime());
 
-            callback?.Invoke(
-                _csvData.Count > 0,
-                new Dictionary<string, string>(_csvData)
-            );
+            callback?.Invoke(_csvData.Count > 0, _csvData);
         }
     }
 }
