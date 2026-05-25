@@ -8,38 +8,103 @@ using UnityEngine;
 
 namespace FineLocalization.EditorTools
 {
+    /// <summary>
+    /// Builds one WebGL AssetBundle per entry configured in
+    /// <see cref="RemoteFontBundleBuildConfig"/>. Nothing is hardcoded — to add a new
+    /// language, open Tools/Fine Localization/Remote Fonts/Bundle Builder and add an entry.
+    /// </summary>
     public static class BuildRemoteFontBundles
     {
-        private const string OutputFolder = "AssetBundles/WebGL/Fonts";
+        private const string DefaultOutputFolder = "AssetBundles/WebGL/Fonts";
 
-        private const string ChineseSimplifiedFolder = "Assets/RemoteFonts/zh-cn";
-        private const string ChineseTraditionalFolder = "Assets/RemoteFonts/zh-tw";
-        private const string JapaneseFolder = "Assets/RemoteFonts/ja";
-        private const string KoreanFolder = "Assets/RemoteFonts/ko";
-        private const string ThaiFolder = "Assets/RemoteFonts/th";
-
-        [MenuItem("Tools/Fine Localization/Remote Fonts/Build WebGL AssetBundles", false, 200)]
+        [MenuItem("Tools/Fine Localization/Remote Fonts/Build WebGL AssetBundles", false, 201)]
         public static void BuildWebGlFontBundles()
         {
-            if (!Directory.Exists(OutputFolder))
-                Directory.CreateDirectory(OutputFolder);
+            var config = RemoteFontBundleBuildConfig.GetOrCreate();
+            if (config == null)
+            {
+                Debug.LogError("[Fonts Bundle] RemoteFontBundleBuildConfig nao pôde ser carregado/criado.");
+                return;
+            }
 
-            var builds = new List<AssetBundleBuild>();
+            if (config.entries == null || config.entries.Count == 0)
+            {
+                Debug.LogWarning(
+                    "[Fonts Bundle] Nenhuma entry configurada. Abra " +
+                    "Tools/Fine Localization/Remote Fonts/Bundle Builder e adicione idiomas."
+                );
+                return;
+            }
 
-            AddFontBundle(builds, "fonts_zh_cn", ChineseSimplifiedFolder);
-            AddFontBundle(builds, "fonts_zh_tw", ChineseTraditionalFolder);
-            AddFontBundle(builds, "fonts_ja", JapaneseFolder);
-            AddFontBundle(builds, "fonts_ko", KoreanFolder);
-            AddFontBundle(builds, "fonts_th", ThaiFolder);
+            var output = string.IsNullOrWhiteSpace(config.outputFolder)
+                ? DefaultOutputFolder
+                : config.outputFolder;
+
+            if (!Directory.Exists(output))
+                Directory.CreateDirectory(output);
+
+            var builds = new List<AssetBundleBuild>(config.entries.Count);
+            var seenNames = new HashSet<string>();
+
+            foreach (var entry in config.entries)
+            {
+                if (entry == null) continue;
+
+                var bundleName = entry.bundleName?.Trim();
+                if (string.IsNullOrEmpty(bundleName))
+                {
+                    Debug.LogWarning("[Fonts Bundle] Entry com bundleName vazio — ignorada.");
+                    continue;
+                }
+
+                if (!seenNames.Add(bundleName))
+                {
+                    Debug.LogWarning($"[Fonts Bundle] Bundle name duplicado '{bundleName}' — ignorado (mantém o primeiro).");
+                    continue;
+                }
+
+                if (entry.folder == null)
+                {
+                    Debug.LogWarning($"[Fonts Bundle] Entry '{bundleName}' sem pasta atribuída — ignorada.");
+                    continue;
+                }
+
+                var folderPath = AssetDatabase.GetAssetPath(entry.folder);
+                if (!AssetDatabase.IsValidFolder(folderPath))
+                {
+                    Debug.LogWarning(
+                        $"[Fonts Bundle] '{bundleName}' aponta para um asset que não é pasta: {folderPath}"
+                    );
+                    continue;
+                }
+
+                var guids = AssetDatabase.FindAssets("t:TMP_FontAsset", new[] { folderPath });
+                if (guids == null || guids.Length == 0)
+                {
+                    Debug.LogWarning(
+                        $"[Fonts Bundle] Nenhum TMP_FontAsset em '{folderPath}' (bundle '{bundleName}')."
+                    );
+                    continue;
+                }
+
+                var assetPaths = guids.Select(AssetDatabase.GUIDToAssetPath).ToArray();
+                builds.Add(new AssetBundleBuild
+                {
+                    assetBundleName = bundleName,
+                    assetNames = assetPaths
+                });
+
+                Debug.Log($"[Fonts Bundle] '{bundleName}' → {assetPaths.Length} asset(s)");
+            }
 
             if (builds.Count == 0)
             {
-                Debug.LogWarning("[Fonts Bundle] Nenhum TMP_FontAsset encontrado para empacotar.");
+                Debug.LogWarning("[Fonts Bundle] Nenhum bundle elegível para empacotar.");
                 return;
             }
 
             var manifest = BuildPipeline.BuildAssetBundles(
-                OutputFolder,
+                output,
                 builds.ToArray(),
                 BuildAssetBundleOptions.ChunkBasedCompression,
                 BuildTarget.WebGL
@@ -52,53 +117,10 @@ namespace FineLocalization.EditorTools
             }
 
             Debug.Log(
-                $"[Fonts Bundle] AssetBundles gerados com sucesso em:\n{Path.GetFullPath(OutputFolder)}"
+                $"[Fonts Bundle] OK — {builds.Count} bundle(s) gerados em:\n{Path.GetFullPath(output)}"
             );
-
-            foreach (var file in Directory.GetFiles(OutputFolder))
-                Debug.Log($"[Fonts Bundle] Arquivo gerado: {file}");
 
             AssetDatabase.Refresh();
-        }
-
-        private static void AddFontBundle(
-            List<AssetBundleBuild> builds,
-            string bundleName,
-            string folderPath
-        )
-        {
-            if (!Directory.Exists(folderPath))
-            {
-                Debug.LogWarning($"[Fonts Bundle] Pasta não encontrada: {folderPath}");
-                return;
-            }
-
-            var guids = AssetDatabase.FindAssets(
-                "t:TMP_FontAsset",
-                new[] { folderPath }
-            );
-
-            if (guids == null || guids.Length == 0)
-            {
-                Debug.LogWarning(
-                    $"[Fonts Bundle] Nenhum TMP_FontAsset encontrado em: {folderPath}"
-                );
-                return;
-            }
-
-            var assetPaths = guids
-                .Select(AssetDatabase.GUIDToAssetPath)
-                .ToArray();
-
-            builds.Add(new AssetBundleBuild
-            {
-                assetBundleName = bundleName,
-                assetNames = assetPaths
-            });
-
-            Debug.Log(
-                $"[Fonts Bundle] Bundle '{bundleName}' configurado com {assetPaths.Length} asset(s)."
-            );
         }
     }
 }
