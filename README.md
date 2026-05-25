@@ -114,7 +114,27 @@ Clique em **↺ Resolve Sheets**. O sistema busca todas as abas (sheets) dispon�
 Defina **Save Folder** (não use a pasta do package em `Packages/...`).
 Recomendado: `Assets/FineLocalization/Resources/Localization/`.
 
-Clique em **▼ Download Sheets**. Os CSVs são salvos como TextAssets.
+Você tem duas formas de baixar:
+
+**a) Pelo Inspector do `LocalizationSettings`** — botão **▼ Download Sheets** baixa o que estiver no mode ativo.
+
+**b) Pelo menu** — `Tools → Fine Localization → Sheets → Sync from Google (Download + Characters)` abre um **popup de escolha**:
+
+| Opção | Quando usar |
+|-------|-------------|
+| **Production (recommended)** | Default seguro — baixa as planilhas estáveis. **Use sempre antes de gerar uma build de release** |
+| **Development** | Baixa as planilhas em revisão. Uma confirmação extra é exigida para evitar enganos |
+| **Cancel** | Aborta sem fazer nada |
+
+> 🛡️ **Por que Production é a opção segura?** Os CSVs baixados ficam locais (`Assets/FineLocalization/Resources/Localization/`) e entram na build. Se você baixar Development por engano e esquecer, os textos de Dev vão pra produção. O popup pede confirmação extra ao escolher Development justamente por isso, e o build processor também checa.
+
+Para uso em CI/scripts:
+
+```csharp
+LocalizationEditorCsvSync.SyncSheetsForMode(
+    LocalizationSettings.LocalizationMode.Production
+);
+```
 
 ---
 

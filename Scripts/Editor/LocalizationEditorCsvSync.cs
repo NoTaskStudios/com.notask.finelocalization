@@ -45,20 +45,91 @@ namespace FineLocalization.EditorTools
             "ºª°§©®™…–—•" +
             "€£¥₩₹₽";
 
+        /// <summary>
+        /// Entry point do menu — abre o popup de escolha. Production é destacada
+        /// como padrão para evitar que CSVs de Development fiquem locais e
+        /// acabem indo numa build de release por engano.
+        /// </summary>
         [MenuItem("Tools/Fine Localization/Sheets/Sync from Google (Download + Characters)", false, 20)]
         public static void SyncCsvsAndGenerateCharactersTxt()
+        {
+            var settings = LocalizationSettings.Instance;
+            if (settings == null)
+            {
+                FineLocalizationLogger.LogWarning("[FineLocalization Editor] LocalizationSettings não encontrado.");
+                return;
+            }
+
+            var choice = EditorUtility.DisplayDialogComplex(
+                "Sync Sheets from Google",
+                "Qual conjunto de planilhas você quer baixar como CSV local?\n\n" +
+                "• Production — planilhas estáveis para release (recomendado)\n" +
+                "• Development — planilhas em andamento, traduções em revisão\n\n" +
+                "Production é a opção mais segura: evita que CSVs de Dev fiquem locais " +
+                "e acabem entrando numa build de release por engano.",
+                "Production (recommended)",
+                "Cancel",
+                "Development"
+            );
+
+            switch (choice)
+            {
+                case 0: // ok
+                    SyncSheetsForMode(settings, LocalizationSettings.LocalizationMode.Production);
+                    return;
+                case 2: // alt
+                    if (!EditorUtility.DisplayDialog(
+                            "Sync Development Sheets",
+                            "Você está baixando as planilhas de DEVELOPMENT como CSV local.\n\n" +
+                            "Lembre-se de trocar para Production antes de gerar a build de release " +
+                            "(o build processor também irá avisar).\n\nContinuar?",
+                            "Baixar Development",
+                            "Cancel"))
+                        return;
+                    SyncSheetsForMode(settings, LocalizationSettings.LocalizationMode.Development);
+                    return;
+                default: // 1 = cancel
+                    return;
+            }
+        }
+
+        /// <summary>
+        /// Quick API for scripted use (e.g. CI). Skips the popup.
+        /// </summary>
+        public static void SyncSheetsForMode(LocalizationSettings.LocalizationMode mode)
+        {
+            var settings = LocalizationSettings.Instance;
+            if (settings == null)
+            {
+                FineLocalizationLogger.LogWarning("[FineLocalization Editor] LocalizationSettings não encontrado.");
+                return;
+            }
+            SyncSheetsForMode(settings, mode);
+        }
+
+        private static void SyncSheetsForMode(LocalizationSettings settings, LocalizationSettings.LocalizationMode mode)
         {
             try
             {
                 EnsureOutputFolderExists();
 
-                var activeSources = LocalizationSettings.Instance.GetActiveSources();
+                var sources = mode == LocalizationSettings.LocalizationMode.Development
+                    ? settings.DevSources
+                    : settings.Sources;
 
-                if (activeSources == null || activeSources.Count == 0)
+                var modeLabel = mode.ToString();
+
+                if (sources == null || sources.Count == 0)
                 {
-                    FineLocalizationLogger.LogWarning("[FineLocalization Editor] Nenhuma source ativa encontrada.");
+                    FineLocalizationLogger.LogWarning(
+                        $"[FineLocalization Editor] Nenhuma source configurada em '{modeLabel}'."
+                    );
                     return;
                 }
+
+                FineLocalizationLogger.Log($"[FineLocalization Editor] Sincronizando planilhas de {modeLabel}...");
+
+                var activeSources = sources;
 
                 var downloadedCsvs = new Dictionary<string, string>();
                 var totalSheets = CountAllSheets(activeSources);
