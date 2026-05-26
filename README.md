@@ -272,7 +272,19 @@ Idiomas com **muitos glyphs** (chinês, japonês, coreano, tailandês, árabe, h
 
 1. **Tools → Fine Localization → WebGL Remote Fonts → Open Bundle Builder Window**
 2. Na primeira vez, o asset `RemoteFontBundleBuildConfig` é criado automaticamente em `Assets/FineLocalization/Editor/`.
-   O pacote também cria `Assets/FineLocalization/RemoteFonts/` com pastas iniciais para `ChineseSimplified`, `ChineseTraditional`, `Japanese`, `Korean` e `Thai`.
+   O pacote também cria a estrutura inicial de fontes dentro do FineLocalization:
+
+   ```
+   Assets/
+   └── FineLocalization/
+       └── RemoteFonts/
+           ├── ChineseSimplified/
+           ├── ChineseTraditional/
+           ├── Japanese/
+           ├── Korean/
+           └── Thai/
+   ```
+
 3. Para cada idioma:
    - Defina **Bundle name** (ex: `font_ar`, `font_he`, `font_vi`)
    - Arraste a **pasta** que contém os `TMP_FontAsset` desse idioma

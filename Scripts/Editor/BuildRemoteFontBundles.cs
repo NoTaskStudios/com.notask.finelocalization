@@ -11,7 +11,7 @@ namespace FineLocalization.EditorTools
     /// <summary>
     /// Builds one WebGL AssetBundle per entry configured in
     /// <see cref="RemoteFontBundleBuildConfig"/>. Nothing is hardcoded — to add a new
-    /// language, open Tools/Fine Localization/Remote Fonts/Bundle Builder and add an entry.
+    /// language, open Tools/Fine Localization/WebGL Remote Fonts/Open Bundle Builder Window and add an entry.
     /// </summary>
     public static class BuildRemoteFontBundles
     {
@@ -31,7 +31,7 @@ namespace FineLocalization.EditorTools
             {
                 Debug.LogWarning(
                     "[Fonts Bundle] Nenhuma entry configurada. Abra " +
-                    "Tools/Fine Localization/Remote Fonts/Bundle Builder e adicione idiomas."
+                    "Tools/Fine Localization/WebGL Remote Fonts/Open Bundle Builder Window e adicione idiomas."
                 );
                 return;
             }
