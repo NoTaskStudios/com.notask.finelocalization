@@ -293,6 +293,12 @@ Idiomas com **muitos glyphs** (chinês, japonês, coreano, tailandês, árabe, h
 
 > A lista é totalmente dinâmica — adicione/remova quantos idiomas quiser. **Nada é hardcoded.**
 
+Ao sincronizar as planilhas, o pacote gera `used_characters_all.txt` e também arquivos por idioma,
+como `used_characters_ja.txt`, `used_characters_ko.txt` e `used_characters_th.txt`.
+O sufixo segue o nome da coluna de idioma no CSV.
+Para criar um `TMP_FontAsset` remoto, use o arquivo do idioma correspondente no Font Asset Creator;
+isso evita que uma fonte japonesa inclua glyphs de coreano, tailandês ou outros idiomas.
+
 ### Usar em runtime
 
 Adicione o componente `RemoteFontBundleLoader` na cena e configure:

@@ -19,6 +19,9 @@ namespace FineLocalization.EditorTools
         private const string CharactersTxtFileName =
             "used_characters_all.txt";
 
+        private const string LanguageCharactersTxtPrefix =
+            "used_characters_";
+
         private const string LatinBaseCharactersTxtFileName =
             "characters_latin_base.txt";
 
@@ -200,6 +203,7 @@ namespace FineLocalization.EditorTools
                 );
 
                 GenerateCharactersTxt(downloadedCsvs);
+                GenerateLanguageCharactersTxts(downloadedCsvs);
                 GenerateLatinBaseCharactersTxt();
 
                 AssetDatabase.Refresh();
@@ -254,6 +258,7 @@ namespace FineLocalization.EditorTools
                 }
 
                 GenerateCharactersTxt(csvMap);
+                GenerateLanguageCharactersTxts(csvMap);
                 GenerateLatinBaseCharactersTxt();
 
                 AssetDatabase.Refresh();
@@ -403,6 +408,81 @@ namespace FineLocalization.EditorTools
             );
         }
 
+        private static void GenerateLanguageCharactersTxts(
+            Dictionary<string, string> csvMap
+        )
+        {
+            var settings = LocalizationSettings.Instance;
+            var keyColumnIndex = settings != null ? settings.skip : 0;
+            var firstLanguageColumnIndex = keyColumnIndex + 1;
+            var languageCharacters = new Dictionary<string, CharacterSet>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var csvPair in csvMap)
+            {
+                var csvContent = csvPair.Value;
+                if (string.IsNullOrWhiteSpace(csvContent))
+                    continue;
+
+                var lines = LocalizationManager.GetLines(csvContent);
+                if (lines.Count == 0)
+                    continue;
+
+                var header = LocalizationManager.GetColumns(lines[0]);
+                if (header.Count <= firstLanguageColumnIndex)
+                    continue;
+
+                for (var columnIndex = firstLanguageColumnIndex; columnIndex < header.Count; columnIndex++)
+                {
+                    var language = header[columnIndex]?.Trim();
+                    if (string.IsNullOrWhiteSpace(language))
+                        continue;
+
+                    var characterSet = GetOrCreateCharacterSet(languageCharacters, language);
+
+                    for (var lineIndex = 1; lineIndex < lines.Count; lineIndex++)
+                    {
+                        var columns = LocalizationManager.GetColumns(lines[lineIndex]);
+                        if (columnIndex >= columns.Count)
+                            continue;
+
+                        AddTextCharacters(columns[columnIndex], characterSet.SeenCharacters, characterSet.Builder);
+                    }
+                }
+            }
+
+            foreach (var languagePair in languageCharacters)
+            {
+                var safeLanguage = SanitizeFileName(languagePair.Key.Trim().ToLowerInvariant());
+                var outputPath = Path.Combine(OutputFolder, $"{LanguageCharactersTxtPrefix}{safeLanguage}.txt");
+
+                File.WriteAllText(
+                    outputPath,
+                    languagePair.Value.Builder.ToString(),
+                    Encoding.UTF8
+                );
+            }
+
+            FineLocalizationLogger.Log(
+                $"[FineLocalization Editor] TXT de caracteres por idioma gerado: " +
+                $"{languageCharacters.Count} idioma(s) em {OutputFolder}"
+            );
+        }
+
+        private static CharacterSet GetOrCreateCharacterSet(
+            Dictionary<string, CharacterSet> languageCharacters,
+            string language
+        )
+        {
+            if (languageCharacters.TryGetValue(language, out var characterSet))
+                return characterSet;
+
+            characterSet = new CharacterSet();
+            AddAsciiPrintableCharacters(characterSet.SeenCharacters, characterSet.Builder);
+            AddTextCharacters(ExtraRuntimeCharacters, characterSet.SeenCharacters, characterSet.Builder);
+            languageCharacters.Add(language, characterSet);
+            return characterSet;
+        }
+
         private static void AddAsciiPrintableCharacters(
             HashSet<char> seenCharacters,
             StringBuilder builder
@@ -470,6 +550,12 @@ namespace FineLocalization.EditorTools
             }
 
             return fileName.Trim();
+        }
+
+        private sealed class CharacterSet
+        {
+            public readonly HashSet<char> SeenCharacters = new HashSet<char>();
+            public readonly StringBuilder Builder = new StringBuilder();
         }
     }
 }
