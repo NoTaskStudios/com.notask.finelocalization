@@ -16,6 +16,8 @@ namespace FineLocalization.EditorTools
 
         private const string OutputFolder = "Assets/FineLocalization/Resources/Localization";
 
+        private const string CharactersOutputFolder = "Assets/FineLocalization/Editor/GeneratedCharacters";
+
         private const string CharactersTxtFileName =
             "used_characters_all.txt";
 
@@ -42,11 +44,13 @@ namespace FineLocalization.EditorTools
          *
          * Por isso adicionamos ASCII visível inteiro + alguns caracteres extras úteis.
          */
-        private const string ExtraRuntimeCharacters =
+        private const string CommonRuntimeCharacters =
             "áàâãäéèêëíìîïóòôõöúùûüçñ" +
             "ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ" +
-            "ºª°§©®™…–—•" +
-            "€£¥₩₹₽";
+            "ºª°§©®™…–—•";
+
+        private const string CurrencyRuntimeCharacters =
+            "€£¥¢₩₫₴₺";
 
         /// <summary>
         /// Entry point do menu — abre o popup de escolha. Production é destacada
@@ -211,7 +215,7 @@ namespace FineLocalization.EditorTools
                 FineLocalizationLogger.Log(
                     $"[FineLocalization Editor] Concluído! " +
                     $"{downloadedCsvs.Count} CSV(s) atualizados e " +
-                    $"{CharactersTxtFileName} / {LatinBaseCharactersTxtFileName} gerados em:\n{OutputFolder}"
+                    $"{CharactersTxtFileName} / {LatinBaseCharactersTxtFileName} gerados em:\n{CharactersOutputFolder}"
                 );
             }
             catch (Exception e)
@@ -265,7 +269,7 @@ namespace FineLocalization.EditorTools
 
                 FineLocalizationLogger.Log(
                     $"[FineLocalization Editor] TXT de caracteres regenerado a partir dos CSVs locais:\n" +
-                    $"{Path.Combine(OutputFolder, CharactersTxtFileName)}"
+                    $"{Path.Combine(CharactersOutputFolder, CharactersTxtFileName)}"
                 );
             }
             catch (Exception e)
@@ -361,7 +365,8 @@ namespace FineLocalization.EditorTools
             var charactersBuilder = new StringBuilder();
 
             AddAsciiPrintableCharacters(seenCharacters, charactersBuilder);
-            AddTextCharacters(ExtraRuntimeCharacters, seenCharacters, charactersBuilder);
+            AddTextCharacters(CommonRuntimeCharacters, seenCharacters, charactersBuilder);
+            AddTextCharacters(CurrencyRuntimeCharacters, seenCharacters, charactersBuilder);
 
             foreach (var csvPair in downloadedCsvs)
             {
@@ -373,7 +378,8 @@ namespace FineLocalization.EditorTools
                 AddTextCharacters(csvContent, seenCharacters, charactersBuilder);
             }
 
-            var outputPath = Path.Combine(OutputFolder, CharactersTxtFileName);
+            EnsureCharactersOutputFolderExists();
+            var outputPath = Path.Combine(CharactersOutputFolder, CharactersTxtFileName);
 
             File.WriteAllText(
                 outputPath,
@@ -394,7 +400,8 @@ namespace FineLocalization.EditorTools
 
             AddTextCharacters(LatinBaseCharacters, seenCharacters, charactersBuilder);
 
-            var outputPath = Path.Combine(OutputFolder, LatinBaseCharactersTxtFileName);
+            EnsureCharactersOutputFolderExists();
+            var outputPath = Path.Combine(CharactersOutputFolder, LatinBaseCharactersTxtFileName);
 
             File.WriteAllText(
                 outputPath,
@@ -450,10 +457,12 @@ namespace FineLocalization.EditorTools
                 }
             }
 
+            EnsureCharactersOutputFolderExists();
+
             foreach (var languagePair in languageCharacters)
             {
                 var safeLanguage = SanitizeFileName(languagePair.Key.Trim().ToLowerInvariant());
-                var outputPath = Path.Combine(OutputFolder, $"{LanguageCharactersTxtPrefix}{safeLanguage}.txt");
+                var outputPath = Path.Combine(CharactersOutputFolder, $"{LanguageCharactersTxtPrefix}{safeLanguage}.txt");
 
                 File.WriteAllText(
                     outputPath,
@@ -464,7 +473,7 @@ namespace FineLocalization.EditorTools
 
             FineLocalizationLogger.Log(
                 $"[FineLocalization Editor] TXT de caracteres por idioma gerado: " +
-                $"{languageCharacters.Count} idioma(s) em {OutputFolder}"
+                $"{languageCharacters.Count} idioma(s) em {CharactersOutputFolder}"
             );
         }
 
@@ -477,8 +486,6 @@ namespace FineLocalization.EditorTools
                 return characterSet;
 
             characterSet = new CharacterSet();
-            AddAsciiPrintableCharacters(characterSet.SeenCharacters, characterSet.Builder);
-            AddTextCharacters(ExtraRuntimeCharacters, characterSet.SeenCharacters, characterSet.Builder);
             languageCharacters.Add(language, characterSet);
             return characterSet;
         }
@@ -540,6 +547,40 @@ namespace FineLocalization.EditorTools
         {
             if (!Directory.Exists(OutputFolder))
                 Directory.CreateDirectory(OutputFolder);
+
+            DeleteLegacyCharactersTxtFromResources();
+        }
+
+        private static void EnsureCharactersOutputFolderExists()
+        {
+            if (!Directory.Exists(CharactersOutputFolder))
+                Directory.CreateDirectory(CharactersOutputFolder);
+        }
+
+        private static void DeleteLegacyCharactersTxtFromResources()
+        {
+            if (!Directory.Exists(OutputFolder))
+                return;
+
+            DeleteFileIfExists(Path.Combine(OutputFolder, CharactersTxtFileName));
+            DeleteFileIfExists(Path.Combine(OutputFolder, LatinBaseCharactersTxtFileName));
+
+            foreach (var path in Directory.GetFiles(OutputFolder, $"{LanguageCharactersTxtPrefix}*.txt"))
+            {
+                DeleteFileIfExists(path);
+            }
+        }
+
+        private static void DeleteFileIfExists(string path)
+        {
+            if (!File.Exists(path))
+                return;
+
+            File.Delete(path);
+
+            var metaPath = path + ".meta";
+            if (File.Exists(metaPath))
+                File.Delete(metaPath);
         }
 
         private static string SanitizeFileName(string fileName)
