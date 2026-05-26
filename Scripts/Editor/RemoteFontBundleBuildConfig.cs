@@ -32,6 +32,9 @@ namespace FineLocalization.EditorTools
         private const string DefaultAssetPath =
             "Assets/FineLocalization/Editor/RemoteFontBundleBuildConfig.asset";
 
+        private const string DefaultRemoteFontsFolder =
+            "Assets/FineLocalization/RemoteFonts";
+
         /// <summary>
         /// Locates the project's config (first match) or creates one populated with the
         /// 5 default language entries that used to be hardcoded.
@@ -42,21 +45,89 @@ namespace FineLocalization.EditorTools
             if (guids != null && guids.Length > 0)
             {
                 var path = AssetDatabase.GUIDToAssetPath(guids[0]);
-                return AssetDatabase.LoadAssetAtPath<RemoteFontBundleBuildConfig>(path);
+                var config = AssetDatabase.LoadAssetAtPath<RemoteFontBundleBuildConfig>(path);
+                if (EnsureDefaultRemoteFontFolders(config))
+                {
+                    EditorUtility.SetDirty(config);
+                    AssetDatabase.SaveAssetIfDirty(config);
+                }
+
+                return config;
             }
 
             EnsureFolder(Path.GetDirectoryName(DefaultAssetPath));
+            EnsureFolder(DefaultRemoteFontsFolder);
 
             var instance = CreateInstance<RemoteFontBundleBuildConfig>();
-            instance.entries.Add(new Entry { bundleName = "font_zh_cn" });
-            instance.entries.Add(new Entry { bundleName = "font_zh_tw" });
-            instance.entries.Add(new Entry { bundleName = "font_ja" });
-            instance.entries.Add(new Entry { bundleName = "font_ko" });
-            instance.entries.Add(new Entry { bundleName = "font_th" });
+            instance.entries.Add(CreateDefaultEntry("font_zh_cn", "ChineseSimplified"));
+            instance.entries.Add(CreateDefaultEntry("font_zh_tw", "ChineseTraditional"));
+            instance.entries.Add(CreateDefaultEntry("font_ja", "Japanese"));
+            instance.entries.Add(CreateDefaultEntry("font_ko", "Korean"));
+            instance.entries.Add(CreateDefaultEntry("font_th", "Thai"));
 
             AssetDatabase.CreateAsset(instance, DefaultAssetPath);
             AssetDatabase.SaveAssets();
             return instance;
+        }
+
+        private static bool EnsureDefaultRemoteFontFolders(RemoteFontBundleBuildConfig config)
+        {
+            EnsureFolder(DefaultRemoteFontsFolder);
+            EnsureFolder($"{DefaultRemoteFontsFolder}/ChineseSimplified");
+            EnsureFolder($"{DefaultRemoteFontsFolder}/ChineseTraditional");
+            EnsureFolder($"{DefaultRemoteFontsFolder}/Japanese");
+            EnsureFolder($"{DefaultRemoteFontsFolder}/Korean");
+            EnsureFolder($"{DefaultRemoteFontsFolder}/Thai");
+
+            if (config == null || config.entries == null) return false;
+
+            var changed = false;
+            foreach (var entry in config.entries)
+            {
+                if (entry == null || entry.folder != null) continue;
+
+                var folderName = GetDefaultFolderName(entry.bundleName);
+                if (string.IsNullOrEmpty(folderName)) continue;
+
+                var folderPath = $"{DefaultRemoteFontsFolder}/{folderName}";
+                EnsureFolder(folderPath);
+
+                entry.folder = AssetDatabase.LoadAssetAtPath<DefaultAsset>(folderPath);
+                changed |= entry.folder != null;
+            }
+
+            return changed;
+        }
+
+        private static Entry CreateDefaultEntry(string bundleName, string folderName)
+        {
+            var folderPath = $"{DefaultRemoteFontsFolder}/{folderName}";
+            EnsureFolder(folderPath);
+
+            return new Entry
+            {
+                bundleName = bundleName,
+                folder = AssetDatabase.LoadAssetAtPath<DefaultAsset>(folderPath)
+            };
+        }
+
+        private static string GetDefaultFolderName(string bundleName)
+        {
+            switch (bundleName?.Trim())
+            {
+                case "font_zh_cn":
+                    return "ChineseSimplified";
+                case "font_zh_tw":
+                    return "ChineseTraditional";
+                case "font_ja":
+                    return "Japanese";
+                case "font_ko":
+                    return "Korean";
+                case "font_th":
+                    return "Thai";
+                default:
+                    return null;
+            }
         }
 
         private static void EnsureFolder(string projectRelativePath)

@@ -67,8 +67,6 @@ Tools/Fine Localization/
 │   ├── Regenerate Characters from Saved CSVs
 │   └── Generate Latin Base Characters
 │
-├── Import Local CSV → Locale Assets      ← importa CSV local → Locale ScriptableObjects
-│
 ├── WebGL Remote Fonts/
 │   ├── Open Bundle Builder Window
 │   └── Build Bundles Now
@@ -274,6 +272,7 @@ Idiomas com **muitos glyphs** (chinês, japonês, coreano, tailandês, árabe, h
 
 1. **Tools → Fine Localization → WebGL Remote Fonts → Open Bundle Builder Window**
 2. Na primeira vez, o asset `RemoteFontBundleBuildConfig` é criado automaticamente em `Assets/FineLocalization/Editor/`.
+   O pacote também cria `Assets/FineLocalization/RemoteFonts/` com pastas iniciais para `ChineseSimplified`, `ChineseTraditional`, `Japanese`, `Korean` e `Thai`.
 3. Para cada idioma:
    - Defina **Bundle name** (ex: `font_ar`, `font_he`, `font_vi`)
    - Arraste a **pasta** que contém os `TMP_FontAsset` desse idioma
@@ -314,16 +313,6 @@ No Inspector do `RemoteFontBundleLoader`, há um header **Script Detection (Opti
 | `forceRemoteFontPrefixes` | **Override**: força download mesmo para idiomas Latin. Use se sua fonte padrão é minimalista e não tem acentos completos (ex: `tr`, `vi`) |
 
 > 💡 Idiomas **não-Latin** (CJK, Árabe, Hebraico, Tailandês, Devanagari, Cirílico, Grego, etc.) **sempre** caem no fluxo de download — só procuram bundle se você tiver criado config pra eles no `RemoteFontBundleBuildConfig`.
-
----
-
-## Import Local CSV → Locale Assets
-
-Para projetos que **não usam Google Sheets** e têm CSVs locais:
-
-1. **Tools → Fine Localization → Import Local CSV → Locale Assets**
-2. Clique em **Load CSV** e selecione o arquivo
-3. Clique em **Generate Scriptable Object** — gera um `Locale` ScriptableObject por coluna de idioma
 
 ---
 
