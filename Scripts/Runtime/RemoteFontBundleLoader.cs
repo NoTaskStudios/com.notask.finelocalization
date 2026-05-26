@@ -24,7 +24,7 @@ namespace FineLocalization.Scripts.Runtime
         }
 
         [Header("Remote Font Bundles")]
-        [Tooltip("URL base dos bundles. Para arquivos gerados como font_ja.ft, use Ex: https://cdn.site.com/fonts/font_")]
+        [Tooltip("URL base da pasta dos bundles. Ex: https://cdn.site.com/fonts/")]
         [SerializeField] private string baseBundleUrl;
 
         [Tooltip("Extensão adicionada depois do prefixo quando usar a URL base. Ex: .ft")]
@@ -458,7 +458,16 @@ namespace FineLocalization.Scripts.Runtime
             if (string.IsNullOrWhiteSpace(baseBundleUrl))
                 return string.Empty;
 
-            return baseBundleUrl.Trim() + prefix + bundleFileExtension;
+            return CombineBundleUrl(baseBundleUrl, "font_" + prefix + bundleFileExtension);
+        }
+
+        private static string CombineBundleUrl(string baseUrl, string fileName)
+        {
+            var trimmedBaseUrl = baseUrl.Trim();
+            if (trimmedBaseUrl.EndsWith("/", StringComparison.Ordinal))
+                return trimmedBaseUrl + fileName;
+
+            return trimmedBaseUrl + "/" + fileName;
         }
 
         private void RegisterFallback(TMP_FontAsset fontAsset)
