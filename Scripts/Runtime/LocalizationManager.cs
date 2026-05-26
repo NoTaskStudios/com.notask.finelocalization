@@ -25,14 +25,6 @@ namespace FineLocalization.Runtime
         public const string DefaultLanguage = "en-us";
         private static string _language = DefaultLanguage;
 
-        /// <summary>
-        /// Quando true, cada mudança em <see cref="Language"/> imprime no console
-        /// o valor antigo, o novo, o valor literal recebido E a stack trace
-        /// completa de quem chamou o setter. Útil para descobrir "quem está
-        /// mudando o idioma sem eu pedir".
-        /// </summary>
-        public static bool TraceLanguageChanges = false;
-
         public static string Language
         {
             get => _language;
@@ -40,18 +32,6 @@ namespace FineLocalization.Runtime
             {
                 var resolvedLanguage = ResolveLanguage(value);
                 if (_language == resolvedLanguage) return;
-
-                if (TraceLanguageChanges)
-                {
-                    var from = _language;
-                    var to = resolvedLanguage;
-                    var requested = value;
-                    Debug.Log(
-                        $"[FineLocalization] Language change: '{from}' → '{to}' (requested: '{requested}')\n" +
-                        $"Stack:\n{System.Environment.StackTrace}"
-                    );
-                }
-
                 _language = resolvedLanguage;
                 OnLocalizationChanged();
             }
