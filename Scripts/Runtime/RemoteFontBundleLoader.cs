@@ -53,7 +53,7 @@ namespace FineLocalization.Scripts.Runtime
         [SerializeField] private bool loadOnLocalizationChanged = true;
 
         [Tooltip("Tenta carregar a fonte do idioma atual quando este componente for habilitado.")]
-        [SerializeField] private bool loadCurrentLanguageOnEnable = true;
+        [SerializeField] private bool loadCurrentLanguageOnEnable = false;
 
         [Header("Script Detection (Optimization)")]
         [Tooltip("Quando marcado, idiomas de script Latin (en, pt, es, fr, de, ...) pulam o download — assume-se que as fontes do projeto já cobrem esses glyphs. Desligue se sua fonte padrão NÃO cobre acentos / caracteres latinos estendidos.")]
@@ -64,6 +64,10 @@ namespace FineLocalization.Scripts.Runtime
 
         [Tooltip("Força o download do bundle para esses prefixos mesmo que sejam Latin. Use se sua fonte padrão é minimalista e não cobre acentos. Ex: 'tr', 'vi'.")]
         [SerializeField] private List<string> forceRemoteFontPrefixes = new();
+
+        [Header("Manual Test")]
+        [Tooltip("Idioma usado pelo menu de contexto de teste no Inspector.")]
+        [SerializeField] private string testLanguage = "ja-jp";
 
         /// <summary>
         /// ISO 639-1 codes that are written in Latin script. These are skipped by default
@@ -112,6 +116,27 @@ namespace FineLocalization.Scripts.Runtime
         public void EnsureCurrentLanguageFont()
         {
             StartCoroutine(EnsureFontForLanguage(LocalizationManager.Language));
+        }
+
+        public void TestLanguage(string language)
+        {
+            StartCoroutine(EnsureFontForLanguage(language, success =>
+                FineLocalizationLogger.Log(
+                    () => $"[RemoteFontBundleLoader] Teste manual finalizado para '{language}'. Success: {success}"
+                )
+            ));
+        }
+
+        [ContextMenu("Fine Localization/Test Remote Font Language")]
+        private void TestConfiguredLanguage()
+        {
+            TestLanguage(testLanguage);
+        }
+
+        [ContextMenu("Fine Localization/Dump Diagnostics")]
+        private void DumpDiagnosticsFromContextMenu()
+        {
+            DumpDiagnostics();
         }
 
         /// <summary>
@@ -239,7 +264,9 @@ namespace FineLocalization.Scripts.Runtime
 
             FineLocalizationLogger.Log(
                 () => $"[RemoteFontBundleLoader] Requisição finalizada. " +
-                    $"Result: {request.result} | Erro: {request.error}"
+                    $"Result: {request.result} | HTTP: {request.responseCode} | " +
+                    $"Downloaded: {request.downloadedBytes} bytes | " +
+                    $"Error: {FormatRequestError(request)}"
             );
 
             if (request.result != UnityWebRequest.Result.Success)
@@ -309,6 +336,14 @@ namespace FineLocalization.Scripts.Runtime
 
             onComplete?.Invoke(true);
         }
+
+        private static string FormatRequestError(UnityWebRequest request)
+        {
+            return string.IsNullOrWhiteSpace(request.error)
+                ? "<none>"
+                : request.error;
+        }
+
         // Reusable buffer to avoid HashSet alloc per call.
         private static readonly HashSet<TMP_FontAsset> _seenFontsBuffer = new();
 

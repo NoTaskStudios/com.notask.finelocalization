@@ -31,6 +31,10 @@ namespace FineLocalization.Scripts.Runtime
 
         [SerializeField] private bool loadRemoteFontBeforeApplyingLocalization = true;
 
+        [Header("Initial Language")]
+        [Tooltip("Idioma inicial opcional para aplicar antes de liberar o evento de localização pronta. Ex: ja-jp")]
+        [SerializeField] private string initialLanguageOverride;
+
         private static string PersistentCsvDir =>
             Path.Combine(Application.persistentDataPath, "FineLocalization/Resources/Localization");
 
@@ -52,6 +56,17 @@ namespace FineLocalization.Scripts.Runtime
         /// want to mirror the last <see cref="OnDownloadLocalizationComplete"/> result.
         /// </summary>
         public static bool LastLocalizationSucceeded { get; private set; }
+
+        /// <summary>
+        /// Optional runtime language requested by the host game before the CSV download finishes.
+        /// Set this from URL/query parameters before waiting for OnDownloadLocalizationComplete.
+        /// </summary>
+        public static string RequestedLanguage { get; set; }
+
+        public static void SetRequestedLanguage(string language)
+        {
+            RequestedLanguage = language;
+        }
 
         private readonly Dictionary<string, string> _csvData = new();
 
@@ -76,7 +91,7 @@ namespace FineLocalization.Scripts.Runtime
         private IEnumerator NotifyLocalizationAlreadyReady()
         {
             yield return null;
-            UseBundledCsvs();
+            yield return UseBundledCsvs();
         }
         /// <summary>
         /// Baixa todos os sheets configurados em runtime.
@@ -93,7 +108,7 @@ namespace FineLocalization.Scripts.Runtime
 
             if (ShouldUseBundledCsvs())
             {
-                UseBundledCsvs();
+                yield return UseBundledCsvs();
                 yield break;
             }
 
@@ -149,17 +164,19 @@ namespace FineLocalization.Scripts.Runtime
                         yield return new WaitForSecondsRealtime(delayBetweenSheets);
                 }
 
-                OnDownloadLocalizationComplete?.Invoke(sourceSuccess);
-
                 if (sourceSuccess)
                 {
+                    var targetLanguage = ResolveRequestedLanguage();
+
                     if (loadRemoteFontBeforeApplyingLocalization && remoteFontBundleLoader != null)
                     {
-                        yield return remoteFontBundleLoader.EnsureFontForLanguage(LocalizationManager.Language);
+                        yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage);
                     }
 
-                    LocalizationManager.LoadFromCsvMap(_csvData);
+                    LocalizationManager.LoadFromCsvMap(_csvData, targetLanguage);
                 }
+
+                OnDownloadLocalizationComplete?.Invoke(sourceSuccess);
             }
 
             var fullSuccess = allSourcesSuccess && _csvData.Count > 0;
@@ -182,11 +199,19 @@ namespace FineLocalization.Scripts.Runtime
         /// ou CSV persistido no disco/IndexedDB). Sempre dispara os mesmos eventos do fluxo
         /// de download bem-sucedido, garantindo compatibilidade com projetos antigos.
         /// </summary>
-        private void UseBundledCsvs()
+        private IEnumerator UseBundledCsvs()
         {
             LocalizationManager.RuntimeCsvResolver = GetCsvContent;
             LocalizationManager.RuntimeCsvPersistenceHook = PersistCsvContent;
-            LocalizationManager.ReloadAll();
+
+            var targetLanguage = ResolveRequestedLanguage();
+
+            if (loadRemoteFontBeforeApplyingLocalization && remoteFontBundleLoader != null)
+            {
+                yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage);
+            }
+
+            LocalizationManager.ReloadAll(targetLanguage);
 
             FineLocalizationLogger.Log(
                 "[FineLocalization] Using bundled CSV TextAssets (downloadOnStart = false or WebGL CORS fallback)."
@@ -195,6 +220,18 @@ namespace FineLocalization.Scripts.Runtime
             MarkReady(true);
             OnDownloadLocalizationComplete?.Invoke(true);
             OnAllSheetsDownloadedComplete?.Invoke(true);
+        }
+
+        private string ResolveRequestedLanguage()
+        {
+            var requestedLanguage = !string.IsNullOrWhiteSpace(RequestedLanguage)
+                ? RequestedLanguage
+                : initialLanguageOverride;
+
+            if (string.IsNullOrWhiteSpace(requestedLanguage))
+                requestedLanguage = LocalizationManager.Language;
+
+            return LanguageReader.GetLanguageKey(requestedLanguage.Trim().ToLowerInvariant());
         }
 
         private static void MarkReady(bool success)
