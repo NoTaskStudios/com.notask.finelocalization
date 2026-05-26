@@ -67,13 +67,48 @@ namespace FineLocalization.Runtime
 
         private static string ResolveLanguage(string language)
         {
+            // 1) Exact match (case-sensitive).
             if (!string.IsNullOrWhiteSpace(language) && Dictionary.ContainsKey(language))
                 return language;
 
-            if (Dictionary.ContainsKey(DefaultLanguage))
-                return DefaultLanguage;
+            // 2) Case-insensitive match — protects against CSV header "en-US" vs runtime "en-us".
+            if (!string.IsNullOrWhiteSpace(language))
+            {
+                foreach (var key in Dictionary.Keys)
+                {
+                    if (string.Equals(key, language, StringComparison.OrdinalIgnoreCase))
+                    {
+                        FineLocalizationLogger.LogWarning(
+                            () => $"[FineLocalization] Language '{language}' matched case-insensitively to dictionary key '{key}'. Padronize a coluna do CSV para evitar isso."
+                        );
+                        return key;
+                    }
+                }
+            }
 
-            return Dictionary.Count > 0 ? Dictionary.Keys.First() : DefaultLanguage;
+            // 3) Fallback para DefaultLanguage (en-us).
+            if (Dictionary.ContainsKey(DefaultLanguage))
+            {
+                if (!string.IsNullOrWhiteSpace(language))
+                    FineLocalizationLogger.LogWarning(
+                        () => $"[FineLocalization] Language '{language}' não encontrado no dicionário — caindo para DefaultLanguage '{DefaultLanguage}'."
+                    );
+                return DefaultLanguage;
+            }
+
+            // 4) Último recurso: primeira chave do dicionário. AVISA porque isso é provavelmente
+            //    o causador de bugs do tipo "pedi en-us, mas estou vendo ja-jp".
+            if (Dictionary.Count > 0)
+            {
+                var fallback = Dictionary.Keys.First();
+                FineLocalizationLogger.LogError(
+                    () => $"[FineLocalization] ⚠ Language '{language}' não encontrado e DefaultLanguage '{DefaultLanguage}' também não. " +
+                          $"Caindo para PRIMEIRA chave do dicionário: '{fallback}'. Verifique se a coluna do idioma desejado existe no seu CSV."
+                );
+                return fallback;
+            }
+
+            return DefaultLanguage;
         }
 
         public static void Initialize(string language)
@@ -240,6 +275,71 @@ namespace FineLocalization.Runtime
         {
             return Dictionary.ContainsKey(Language) &&
                    Dictionary[Language].ContainsKey(localizationKey);
+        }
+
+        // ---------------------------------------------------------------
+        // DIAGNOSTICS — chame em runtime quando suspeitar de
+        // "está renderizando o idioma errado". O output mostra exatamente
+        // o que está no dicionário e qual idioma o LocalizationManager
+        // está considerando ativo.
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// Imprime no console o estado completo do LocalizationManager:
+        /// idioma ativo, lista de idiomas carregados e contagem de keys por idioma.
+        /// </summary>
+        public static void DumpDiagnostics()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== LocalizationManager Diagnostics ===");
+            sb.AppendLine($"Active language (_language): '{_language}'");
+            sb.AppendLine($"Public  Language property:   '{Language}'");
+            sb.AppendLine($"DefaultLanguage:             '{DefaultLanguage}'");
+            sb.AppendLine($"Dictionary loaded languages: {Dictionary.Count}");
+            foreach (var kv in Dictionary)
+                sb.AppendLine($"  - '{kv.Key}' ({kv.Value.Count} keys)");
+            sb.AppendLine($"_runtimeCsvOverride: {( _runtimeCsvOverride == null ? "null" : _runtimeCsvOverride.Count + " sheet(s)")}");
+            sb.AppendLine($"RuntimeCsvResolver:  {(RuntimeCsvResolver == null ? "null" : "set")}");
+            Debug.Log(sb.ToString());
+        }
+
+        /// <summary>
+        /// Imprime o valor armazenado para uma key em CADA idioma carregado.
+        /// Útil para confirmar se a parsing colocou os textos nas colunas corretas.
+        /// </summary>
+        public static void DumpKey(string key)
+        {
+            if (Dictionary.Count == 0)
+            {
+                Debug.Log($"[FineLocalization] Dictionary vazio. Chame Read() ou aguarde o download.");
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== Key '{key}' em todos os idiomas ===");
+            foreach (var kv in Dictionary)
+            {
+                var found = kv.Value.TryGetValue(key, out var v);
+                if (!found)
+                {
+                    sb.AppendLine($"  [{kv.Key}] <NOT FOUND>");
+                    continue;
+                }
+
+                // Mostra cada char como hex pra detectar mojibake / chars JP escondidos em valor "en-us".
+                var preview = v.Length > 80 ? v.Substring(0, 80) + "…" : v;
+                var hasNonAscii = ContainsNonAscii(v);
+                sb.AppendLine($"  [{kv.Key}] {(hasNonAscii ? "⚠ non-ASCII " : "")}'{preview}'");
+            }
+            Debug.Log(sb.ToString());
+        }
+
+        private static bool ContainsNonAscii(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            for (int i = 0; i < s.Length; i++)
+                if (s[i] > 0x7F) return true;
+            return false;
         }
 
         public static string Localize(string localizationKey)
