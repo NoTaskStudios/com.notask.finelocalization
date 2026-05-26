@@ -13,7 +13,7 @@ namespace FineLocalization.Scripts.Runtime
         [Serializable]
         private class RemoteFontBundleConfig
         {
-            [Tooltip("Ex: zh, ja, ko, th")]
+            [Tooltip("Prefixo de idioma usado para detectar quando carregar esta fonte. Ex: zh, zh-tw, ja, ko, th")]
             public string languagePrefix;
 
             [Tooltip("Opcional. Se vazio, usa Base Bundle Url + languagePrefix.")]
@@ -24,11 +24,11 @@ namespace FineLocalization.Scripts.Runtime
         }
 
         [Header("Remote Font Bundles")]
-        [Tooltip("URL base dos bundles. Ex: https://cdn.site.com/fonts/ ou https://cdn.site.com/fonts/font_")]
+        [Tooltip("URL base dos bundles. Para arquivos gerados como font_ja.ft, use Ex: https://cdn.site.com/fonts/font_")]
         [SerializeField] private string baseBundleUrl;
 
-        [Tooltip("Extensão adicionada depois do prefixo quando usar a URL base. Ex: .bundle")]
-        [SerializeField] private string bundleFileExtension = ".bundle";
+        [Tooltip("Extensão adicionada depois do prefixo quando usar a URL base. Ex: .ft")]
+        [SerializeField] private string bundleFileExtension = ".ft";
 
         [SerializeField] private List<RemoteFontBundleConfig> bundles = new();
 

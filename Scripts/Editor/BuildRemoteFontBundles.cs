@@ -16,6 +16,7 @@ namespace FineLocalization.EditorTools
     public static class BuildRemoteFontBundles
     {
         private const string DefaultOutputFolder = "AssetBundles/WebGL/Fonts";
+        private const string BundleFileExtension = ".ft";
 
         [MenuItem("Tools/Fine Localization/WebGL Remote Fonts/Build Bundles Now", false, 61)]
         public static void BuildWebGlFontBundles()
@@ -88,13 +89,14 @@ namespace FineLocalization.EditorTools
                 }
 
                 var assetPaths = guids.Select(AssetDatabase.GUIDToAssetPath).ToArray();
+                var bundleFileName = EnsureBundleFileExtension(bundleName);
                 builds.Add(new AssetBundleBuild
                 {
-                    assetBundleName = bundleName,
+                    assetBundleName = bundleFileName,
                     assetNames = assetPaths
                 });
 
-                Debug.Log($"[Fonts Bundle] '{bundleName}' → {assetPaths.Length} asset(s)");
+                Debug.Log($"[Fonts Bundle] '{bundleFileName}' → {assetPaths.Length} asset(s)");
             }
 
             if (builds.Count == 0)
@@ -121,6 +123,15 @@ namespace FineLocalization.EditorTools
             );
 
             AssetDatabase.Refresh();
+        }
+
+        private static string EnsureBundleFileExtension(string bundleName)
+        {
+            var extension = Path.GetExtension(bundleName);
+            if (string.Equals(extension, BundleFileExtension, System.StringComparison.OrdinalIgnoreCase))
+                return bundleName;
+
+            return bundleName + BundleFileExtension;
         }
     }
 }
