@@ -67,21 +67,13 @@ namespace FineLocalization.Runtime
 
         private static string ResolveLanguage(string language)
         {
-            var requestedLanguage = string.IsNullOrWhiteSpace(language)
-                ? DefaultLanguage
-                : LanguageReader.GetLanguageKey(language.Trim().ToLowerInvariant());
-
-            if (Dictionary.ContainsKey(requestedLanguage))
-                return requestedLanguage;
+            if (!string.IsNullOrWhiteSpace(language) && Dictionary.ContainsKey(language))
+                return language;
 
             if (Dictionary.ContainsKey(DefaultLanguage))
                 return DefaultLanguage;
 
-            FineLocalizationLogger.LogWarning(
-                () => $"[FineLocalization] Language `{requestedLanguage}` e default `{DefaultLanguage}` não encontrados. Idiomas carregados: {string.Join(", ", Dictionary.Keys)}"
-            );
-
-            return DefaultLanguage;
+            return Dictionary.Count > 0 ? Dictionary.Keys.First() : DefaultLanguage;
         }
 
         public static void Initialize(string language)
@@ -195,7 +187,7 @@ namespace FineLocalization.Runtime
                     // Cria dicionários por idioma (pula colunas ignoradas e Key)
                     for (var i = firstLanguageColumnIndex; i < header.Count; i++)
                     {
-                        var lang = LanguageReader.GetLanguageKey(header[i].Trim().ToLowerInvariant());
+                        var lang = header[i];
                         if (string.IsNullOrWhiteSpace(lang)) continue;
 
                         if (!Dictionary.ContainsKey(lang))
@@ -221,7 +213,7 @@ namespace FineLocalization.Runtime
                     
                         for (var j = firstLanguageColumnIndex; j < header.Count; j++)
                         {
-                            var lang = LanguageReader.GetLanguageKey(header[j].Trim().ToLowerInvariant());
+                            var lang = header[j];
                             if (string.IsNullOrWhiteSpace(lang)) continue;
 
                             var value = j < cols.Count ? cols[j] : string.Empty;
