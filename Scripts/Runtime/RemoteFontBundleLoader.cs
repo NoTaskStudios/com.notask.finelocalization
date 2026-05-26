@@ -42,6 +42,12 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Também adiciona o fallback nas fontes usadas pelos TMP_Text ativos na cena.")]
         [SerializeField] private bool addToActiveTextFonts = true;
 
+        [Tooltip("Aplica o fallback em TODAS as TMP_FontAsset carregadas em memória (inclui fontes dentro de prefabs ainda não instanciados — ex: popups). Mais robusto, custo desprezível porque normalmente há poucas fontes.")]
+        [SerializeField] private bool addToAllLoadedFonts = true;
+
+        [Tooltip("(Último recurso) Após o registro, força SetActive(false/true) em todos TMP_Text ativos. Garante refresh em casos teimosos, mas é caro em cenas grandes. Mantenha desligado a menos que veja warnings de glyph faltando.")]
+        [SerializeField] private bool aggressiveRebuild = false;
+
         [Header("Localization Integration")]
         [Tooltip("Carrega o bundle de fonte automaticamente quando LocalizationManager.Language mudar.")]
         [SerializeField] private bool loadOnLocalizationChanged = true;
@@ -108,6 +114,35 @@ namespace FineLocalization.Scripts.Runtime
             StartCoroutine(EnsureFontForLanguage(LocalizationManager.Language));
         }
 
+        /// <summary>
+        /// Diagnóstico: imprime no console qual idioma está ativo, se ele é Latin,
+        /// quais bundles foram baixados, e em quais TMP_FontAssets o fallback foi adicionado.
+        /// Chame `loader.DumpDiagnostics()` quando aparecer um warning de glyph faltando para
+        /// entender se foi o loader que registrou (ou não) o fallback.
+        /// </summary>
+        public void DumpDiagnostics()
+        {
+            var lang = LocalizationManager.Language ?? "<null>";
+            var normalized = string.IsNullOrWhiteSpace(lang) ? "" : lang.Trim().ToLowerInvariant();
+            var isLatin = !string.IsNullOrEmpty(normalized) && IsLatinScript(normalized);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== RemoteFontBundleLoader Diagnostics ===");
+            sb.AppendLine($"Current language: '{lang}' (normalized: '{normalized}')");
+            sb.AppendLine($"Is Latin script:  {isLatin}  →  " +
+                          (isLatin ? "loader does NOTHING for this language" : "loader will try to load a bundle"));
+            sb.AppendLine($"Loaded bundles:   {_loadedLanguages.Count} ({string.Join(", ", _loadedLanguages)})");
+            sb.AppendLine($"Loading now:      {_loadingLanguages.Count} ({string.Join(", ", _loadingLanguages)})");
+
+            var globals = TMPro.TMP_Settings.fallbackFontAssets;
+            sb.AppendLine($"TMP_Settings.fallbackFontAssets: {(globals?.Count ?? 0)} entries");
+            if (globals != null)
+                for (int i = 0; i < globals.Count; i++)
+                    sb.AppendLine($"  [{i}] {globals[i]?.name ?? "<null>"}");
+
+            FineLocalizationLogger.Log(sb.ToString());
+        }
+
         public IEnumerator EnsureFontForLanguage(
             string language,
             Action<bool> onComplete = null
@@ -129,10 +164,12 @@ namespace FineLocalization.Scripts.Runtime
             // Optimization: if the language uses Latin script (en, pt, es, fr, ...) we
             // assume the project's bundled fonts already cover its glyphs. No network call,
             // no AssetBundle download, no TMP rebuild — instant return.
+            // IMPORTANT: this path does NOT modify any TMP_FontAsset or TMP_Settings.
             if (IsLatinScript(normalizedLanguage))
             {
                 FineLocalizationLogger.Log(
-                    () => $"[RemoteFontBundleLoader] '{normalizedLanguage}' usa script Latin — pulando download (fontes do projeto já cobrem)."
+                    () => $"[RemoteFontBundleLoader] SKIP ({normalizedLanguage}): script Latin detectado — " +
+                          "nenhum download, nenhum fallback registrado, nenhuma fonte tocada."
                 );
                 onComplete?.Invoke(true);
                 yield break;
@@ -276,14 +313,35 @@ namespace FineLocalization.Scripts.Runtime
         private static readonly HashSet<TMP_FontAsset> _seenFontsBuffer = new();
 
         /// <summary>
-        /// Single scene scan: dedupes fonts (so each font's fallback table is touched once),
-        /// then forces mesh update on each active text. Avoids the triple
-        /// Resources.FindObjectsOfTypeAll scan and the SetActive(false/true) toggle which
-        /// forced a full layout rebuild on every TMP_Text — both extremely expensive on WebGL/2GB devices.
+        /// Strategy:
+        /// 1) Add the fallback to every TMP_FontAsset loaded in memory (including those in
+        ///    prefabs that haven't been instantiated yet — e.g. popups). This is the cheap
+        ///    catch-all: typical projects have 1–20 font assets vs hundreds of texts.
+        /// 2) Single scan of scene TMP_Text instances to force a mesh rebuild so already-visible
+        ///    text picks up the new fallback. Uses SetAllDirty + ForceMeshUpdate(ignoreActiveState:true)
+        ///    — the conservative call known to work in all TMP versions.
+        /// 3) Optional aggressive rebuild (SetActive toggle) only if the user opts in.
         /// </summary>
         private IEnumerator ApplyFallbackToSceneAndRebuild(TMP_FontAsset fontAsset)
         {
             yield return null;
+
+            // 1) Register fallback on font assets ---------------------------------------
+            _seenFontsBuffer.Clear();
+
+            // 1a) All loaded TMP_FontAsset instances (covers prefabs / addressables that
+            //     are loaded but not yet instantiated — fixes "popup with missing glyphs").
+            if (addToAllLoadedFonts)
+            {
+                var allFonts = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
+                for (int i = 0; i < allFonts.Length; i++)
+                {
+                    var f = allFonts[i];
+                    if (f == null || f == fontAsset) continue;
+                    if (_seenFontsBuffer.Add(f))
+                        AddFallbackToFont(f, fontAsset);
+                }
+            }
 
 #if UNITY_2022_2_OR_NEWER
             var texts = UnityEngine.Object.FindObjectsByType<TMP_Text>(
@@ -292,9 +350,10 @@ namespace FineLocalization.Scripts.Runtime
             var texts = UnityEngine.Object.FindObjectsOfType<TMP_Text>(true);
 #endif
 
+            // 1b) Scene text fonts — also covered if addToAllLoadedFonts ran above
+            //     (the HashSet dedupes), but kept here for cases where the master toggle is off.
             if (addToActiveTextFonts)
             {
-                _seenFontsBuffer.Clear();
                 for (int i = 0; i < texts.Length; i++)
                 {
                     var t = texts[i];
@@ -302,16 +361,33 @@ namespace FineLocalization.Scripts.Runtime
                     if (_seenFontsBuffer.Add(t.font))
                         AddFallbackToFont(t.font, fontAsset);
                 }
-                _seenFontsBuffer.Clear();
             }
 
+            _seenFontsBuffer.Clear();
+
+            // 2) Force rebuild of visible texts ---------------------------------------
             for (int i = 0; i < texts.Length; i++)
             {
                 var t = texts[i];
                 if (t == null || !t.gameObject.activeInHierarchy) continue;
 
+                t.SetAllDirty();
                 t.havePropertiesChanged = true;
-                t.ForceMeshUpdate(ignoreActiveState: false, forceTextReparsing: true);
+                t.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+            }
+
+            // 3) Optional aggressive pass --------------------------------------------
+            if (aggressiveRebuild)
+            {
+                yield return null;
+                for (int i = 0; i < texts.Length; i++)
+                {
+                    var t = texts[i];
+                    if (t == null || !t.gameObject.activeInHierarchy) continue;
+                    var go = t.gameObject;
+                    go.SetActive(false);
+                    go.SetActive(true);
+                }
             }
         }
         private RemoteFontBundleConfig FindConfig(string language)
