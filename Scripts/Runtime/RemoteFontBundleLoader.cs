@@ -316,50 +316,72 @@ namespace FineLocalization.Scripts.Runtime
                 () => $"[RemoteFontBundleLoader] AssetBundle carregado com sucesso para '{language}'."
             );
 
-            var fontLoadRequest =
-                bundle.LoadAssetAsync<TMP_FontAsset>(config.fontAssetName);
+            // Load ALL assets from the bundle in one pass.
+            // The bundle contains both a TMP_FontAsset AND a Material (Class 21), but
+            // LoadAssetAsync<TMP_FontAsset> only returns the font — it does NOT link the
+            // bundle's Material to fontAsset.material when m_Material was null at build time.
+            // Loading everything at once lets us manually wire them up below.
+            var allAssetsRequest = bundle.LoadAllAssetsAsync();
+            yield return allAssetsRequest;
 
-            yield return fontLoadRequest;
+            TMP_FontAsset fontAsset = null;
+            Material bundleMaterial = null;
 
-            var fontAsset = fontLoadRequest.asset as TMP_FontAsset;
+            if (allAssetsRequest.allAssets != null)
+            {
+                foreach (var asset in allAssetsRequest.allAssets)
+                {
+                    if (fontAsset == null && asset is TMP_FontAsset fa)
+                    {
+                        // Prefer the configured name; fall back to first found.
+                        if (string.IsNullOrEmpty(config.fontAssetName)
+                            || fa.name.Equals(config.fontAssetName, StringComparison.OrdinalIgnoreCase)
+                            || fontAsset == null)
+                            fontAsset = fa;
+                    }
+                    else if (bundleMaterial == null && asset is Material m)
+                    {
+                        bundleMaterial = m;
+                    }
+                }
+            }
 
             if (fontAsset == null)
             {
-                // Log all asset names inside the bundle to help diagnose the name mismatch.
-                var allNames = bundle.GetAllAssetNames();
                 FineLocalizationLogger.LogWarning(
-                    () => $"[RemoteFontBundleLoader] TMP_FontAsset '{config.fontAssetName}' não encontrado no bundle. " +
-                          $"Assets disponíveis no bundle ({allNames.Length}): {string.Join(", ", allNames)}"
+                    () => $"[RemoteFontBundleLoader] Nenhum TMP_FontAsset encontrado no bundle para '{language}'. " +
+                          $"Assets no bundle: {string.Join(", ", bundle.GetAllAssetNames())}"
                 );
-
-                // Fallback: try to load the first TMP_FontAsset available in the bundle,
-                // regardless of the configured name.
-                var fallbackRequest = bundle.LoadAllAssetsAsync<TMP_FontAsset>();
-                yield return fallbackRequest;
-
-                if (fallbackRequest.allAssets != null && fallbackRequest.allAssets.Length > 0)
-                {
-                    fontAsset = fallbackRequest.allAssets[0] as TMP_FontAsset;
-                    if (fontAsset != null)
-                    {
-                        FineLocalizationLogger.Log(
-                            () => $"[RemoteFontBundleLoader] Fallback: usando TMP_FontAsset '{fontAsset.name}' do bundle. " +
-                                  $"Corrija 'fontAssetName' no Inspector para '{fontAsset.name}'."
-                        );
-                    }
-                }
-
-                if (fontAsset == null)
-                {
-                    FineLocalizationLogger.LogWarning(
-                        () => $"[RemoteFontBundleLoader] Nenhum TMP_FontAsset encontrado no bundle para '{language}'."
-                    );
-                    bundle.Unload(false);
-                    _loadingLanguages.Remove(prefix);
-                    onComplete?.Invoke(false);
-                    yield break;
-                }
+                bundle.Unload(false);
+                _loadingLanguages.Remove(prefix);
+                onComplete?.Invoke(false);
+                yield break;
             }
+
+            if (fontAsset.name != config.fontAssetName)
+            {
+                FineLocalizationLogger.Log(
+                    () => $"[RemoteFontBundleLoader] TMP_FontAsset encontrado como '{fontAsset.name}' " +
+                          $"(configurado: '{config.fontAssetName}'). Corrija 'fontAssetName' no Inspector."
+                );
+            }
+
+            // If the font's material is null (was not assigned when the bundle was built),
+            // wire the Material that IS in the bundle directly to the font asset.
+            // This avoids creating any runtime material — we use exactly what was built.
+            if (fontAsset.material == null && bundleMaterial != null)
+            {
+                fontAsset.material = bundleMaterial;
+                FineLocalizationLogger.Log(
+                    () => $"[RemoteFontBundleLoader] Material do bundle '{bundleMaterial.name}' " +
+                          $"vinculado ao font asset '{fontAsset.name}'."
+                );
+            }
+
+            FineLocalizationLogger.Log(
+                () => $"[RemoteFontBundleLoader] Bundle material: {bundleMaterial?.name ?? "não encontrado no bundle"} | " +
+                      $"fontAsset.material: {fontAsset.material?.name ?? "NULL"}"
+            );
 
             FineLocalizationLogger.Log(
                 () => $"[RemoteFontBundleLoader] TMP_FontAsset encontrado: {fontAsset.name} | " +
@@ -660,7 +682,7 @@ namespace FineLocalization.Scripts.Runtime
                 return;
             }
 
-            var mat = Object.Instantiate(sourceMat);
+            var mat = UnityEngine.Object.Instantiate(sourceMat);
             mat.name = fontAsset.name + " Material";
 
             // Swap the atlas texture to this font's atlas.
