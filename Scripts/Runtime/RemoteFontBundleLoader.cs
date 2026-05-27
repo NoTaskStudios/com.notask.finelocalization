@@ -330,13 +330,16 @@ namespace FineLocalization.Scripts.Runtime
             );
             RegisterFallback(fontAsset);
 
-            // Mark as loaded BEFORE ApplyFallbackToSceneAndRebuild so any concurrent
-            // EnsureFontForLanguage call (e.g. triggered by LoadFromCsvMap->OnLocalizationChanged)
-            // hits the cache instead of starting a second download.
+            // Apply fallback to ALL scene fonts and force mesh rebuild FIRST.
+            // Only after that, mark as loaded and release _loadingLanguages so the
+            // wait-loop callers (e.g. RuntimeLocaleDownloader) can proceed to
+            // LoadFromCsvMap. This guarantees every TMP_Text has the fallback in its
+            // font's fallbackFontAssetTable before the texts are updated to Japanese,
+            // preventing invisible glyph rendering.
+            yield return StartCoroutine(ApplyFallbackToSceneAndRebuild(fontAsset));
+
             _loadedLanguages.Add(prefix);
             _loadingLanguages.Remove(prefix);
-
-            yield return StartCoroutine(ApplyFallbackToSceneAndRebuild(fontAsset));
 
             FineLocalizationLogger.Log(
                 () => $"[RemoteFontBundleLoader] Fonte registrada como fallback: {fontAsset.name}"
