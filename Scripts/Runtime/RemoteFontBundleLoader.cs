@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using FineLocalization.Runtime;
 using TMPro;
 using UnityEngine;
@@ -505,8 +506,12 @@ namespace FineLocalization.Scripts.Runtime
             var globalFallbacks = TMP_Settings.fallbackFontAssets;
             if (globalFallbacks == null)
             {
-                globalFallbacks = new List<TMP_FontAsset>();
-                TMP_Settings.fallbackFontAssets = globalFallbacks;
+                globalFallbacks = TryCreateGlobalFallbackList();
+                if (globalFallbacks == null)
+                {
+                    FineLocalizationLogger.LogWarning("[RemoteFontBundleLoader] TMP_Settings.fallbackFontAssets é NULL e não pôde ser inicializado nesta versão do TMP.");
+                    return;
+                }
             }
 
             RemoveNullAndDuplicateFamilyFallbacks(globalFallbacks, fontAsset);
@@ -518,6 +523,33 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, fontAsset);
+        }
+
+        private static List<TMP_FontAsset> TryCreateGlobalFallbackList()
+        {
+            try
+            {
+                var settings = TMP_Settings.instance;
+                if (settings == null)
+                    return null;
+
+                var field = typeof(TMP_Settings).GetField("m_fallbackFontAssets", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (field == null)
+                    return null;
+
+                var list = field.GetValue(settings) as List<TMP_FontAsset>;
+                if (list == null)
+                {
+                    list = new List<TMP_FontAsset>();
+                    field.SetValue(settings, list);
+                }
+
+                return list;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private bool ValidateFontTreeForText(TMP_FontAsset rootFont)
