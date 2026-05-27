@@ -52,8 +52,13 @@ namespace FineLocalization.Runtime
 
         public static void LoadFromCsvMap(Dictionary<string, string> csvBySheet, string preferredLanguage)
         {
+            LoadFromCsvMap(csvBySheet, preferredLanguage, true);
+        }
+
+        public static void LoadFromCsvMap(Dictionary<string, string> csvBySheet, string preferredLanguage, bool notify)
+        {
             _runtimeCsvOverride = csvBySheet != null && csvBySheet.Count > 0 ? csvBySheet : null;
-            ReloadAll(preferredLanguage);
+            ReloadAll(preferredLanguage, notify);
         }
 
         public static void ReloadAll()
@@ -63,15 +68,22 @@ namespace FineLocalization.Runtime
 
         public static void ReloadAll(string preferredLanguage)
         {
-            var currentLang = string.IsNullOrWhiteSpace(preferredLanguage)
+            ReloadAll(preferredLanguage, true);
+        }
+
+        public static void ReloadAll(string preferredLanguage, bool notify)
+        {
+            var requestedLanguage = string.IsNullOrWhiteSpace(preferredLanguage)
                 ? _language
-                : LanguageReader.GetLanguageKey(preferredLanguage.Trim().ToLowerInvariant());
+                : preferredLanguage.Trim().ToLowerInvariant();
 
             Dictionary.Clear();
             Read();
 
+            var currentLang = LanguageReader.GetLanguageKey(requestedLanguage);
             _language = ResolveLanguage(currentLang);
-            OnLocalizationChanged();
+            if (notify)
+                OnLocalizationChanged();
         }
 
         public static void Refresh()

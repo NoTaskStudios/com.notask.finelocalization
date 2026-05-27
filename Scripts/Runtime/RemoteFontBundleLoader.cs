@@ -109,6 +109,7 @@ namespace FineLocalization.Scripts.Runtime
         private readonly List<Material> _runtimeMaterials = new();
         private readonly HashSet<TMP_FontAsset> _seenFonts = new();
         private readonly HashSet<TMP_FontAsset> _fontValidationStack = new();
+        private bool _ignoreNextLocalizationChanged;
 
         private void OnEnable()
         {
@@ -127,7 +128,18 @@ namespace FineLocalization.Scripts.Runtime
 
         public void EnsureCurrentLanguageFont()
         {
+            if (_ignoreNextLocalizationChanged)
+            {
+                _ignoreNextLocalizationChanged = false;
+                return;
+            }
+
             StartCoroutine(EnsureFontForLanguage(LocalizationManager.Language));
+        }
+
+        public void IgnoreNextLocalizationChanged()
+        {
+            _ignoreNextLocalizationChanged = true;
         }
 
         public void TestLanguage(string language)
@@ -172,6 +184,11 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             FineLocalizationLogger.Log(sb.ToString());
+        }
+
+        public IEnumerator RebuildCurrentTexts()
+        {
+            yield return StartCoroutine(RebuildTextsBatched(FindSceneTexts()));
         }
 
         public IEnumerator EnsureFontForLanguage(string language, Action<bool> onComplete = null)
