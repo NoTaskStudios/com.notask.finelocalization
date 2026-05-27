@@ -382,6 +382,10 @@ namespace FineLocalization.Scripts.Runtime
             if (addToAllLoadedFonts)
             {
                 var allFonts = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
+                FineLocalizationLogger.Log(
+                    () => $"[RemoteFontBundleLoader] ApplyFallback: addToAllLoadedFonts=true | " +
+                          $"TMP_FontAssets em memória: {allFonts.Length}"
+                );
                 for (int i = 0; i < allFonts.Length; i++)
                 {
                     var f = allFonts[i];
@@ -520,18 +524,50 @@ namespace FineLocalization.Scripts.Runtime
 
         private void RegisterFallback(TMP_FontAsset fontAsset)
         {
-            if (fontAsset == null) return;
+            if (fontAsset == null)
+            {
+                FineLocalizationLogger.LogWarning("[RemoteFontBundleLoader] RegisterFallback: fontAsset é NULL — nada será registrado.");
+                return;
+            }
+
+            FineLocalizationLogger.Log(
+                () => $"[RemoteFontBundleLoader] RegisterFallback: fontAsset='{fontAsset.name}' | " +
+                      $"characters={fontAsset.characterTable?.Count ?? 0} | " +
+                      $"glyphs={fontAsset.glyphTable?.Count ?? 0}"
+            );
 
             if (addToGlobalTmpFallbacks)
             {
                 var globalFallbacks = TMP_Settings.fallbackFontAssets;
-
-                if (globalFallbacks != null && !globalFallbacks.Contains(fontAsset))
+                if (globalFallbacks == null)
+                {
+                    FineLocalizationLogger.LogWarning("[RemoteFontBundleLoader] RegisterFallback: TMP_Settings.fallbackFontAssets é NULL — não foi possível adicionar ao global.");
+                }
+                else if (globalFallbacks.Contains(fontAsset))
+                {
+                    FineLocalizationLogger.Log(() => "[RemoteFontBundleLoader] RegisterFallback: já estava nos fallbacks globais.");
+                }
+                else
+                {
                     globalFallbacks.Add(fontAsset);
+                    FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] RegisterFallback: adicionado aos fallbacks globais. Total agora: {globalFallbacks.Count}");
+                }
             }
 
-            foreach (var mainFont in mainFontAssets)
-                AddFallbackToFont(mainFont, fontAsset);
+            FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] RegisterFallback: mainFontAssets.Count = {mainFontAssets?.Count ?? 0}");
+            if (mainFontAssets != null)
+            {
+                for (int i = 0; i < mainFontAssets.Count; i++)
+                {
+                    var mainFont = mainFontAssets[i];
+                    int capturedIndex = i; // capture for lambda
+                    FineLocalizationLogger.Log(
+                        () => $"[RemoteFontBundleLoader] RegisterFallback: mainFontAssets[{capturedIndex}] = " +
+                              (mainFont == null ? "NULL" : $"'{mainFont.name}'")
+                    );
+                    AddFallbackToFont(mainFont, fontAsset);
+                }
+            }
 
             // Scene-text fallback registration moved to ApplyFallbackToSceneAndRebuild
             // (single dedup'd scan instead of one AddFallbackToFont call per text).
@@ -546,8 +582,20 @@ namespace FineLocalization.Scripts.Runtime
 
             targetFont.fallbackFontAssetTable ??= new List<TMP_FontAsset>();
 
-            if (!targetFont.fallbackFontAssetTable.Contains(fallbackFont))
+            if (targetFont.fallbackFontAssetTable.Contains(fallbackFont))
+            {
+                FineLocalizationLogger.Log(
+                    () => $"[RemoteFontBundleLoader] AddFallbackToFont: '{fallbackFont.name}' já é fallback de '{targetFont.name}' — pulando."
+                );
+            }
+            else
+            {
                 targetFont.fallbackFontAssetTable.Add(fallbackFont);
+                FineLocalizationLogger.Log(
+                    () => $"[RemoteFontBundleLoader] AddFallbackToFont: ADICIONADO '{fallbackFont.name}' → '{targetFont.name}'. " +
+                          $"fallbackFontAssetTable.Count agora = {targetFont.fallbackFontAssetTable.Count}"
+                );
+            }
 
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, targetFont);
         }
