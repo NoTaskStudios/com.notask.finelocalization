@@ -226,8 +226,14 @@ namespace FineLocalization.Scripts.Runtime
             if (_loadedLanguages.Contains(prefix))
             {
                 FineLocalizationLogger.Log(
-                    () => $"[RemoteFontBundleLoader] Fonte de '{prefix}' já estava carregada."
+                    () => $"[RemoteFontBundleLoader] Fonte de '{prefix}' já estava carregada. Forçando rebuild dos textos atuais."
                 );
+
+                // The font fallback is already registered, but the scene texts may have just
+                // been updated to the new language (e.g. LoadFromCsvMap just fired). We need
+                // one more ForceMeshUpdate pass so TMP re-evaluates the fallback chain with
+                // the new Japanese glyphs in the text content.
+                yield return StartCoroutine(RebuildSceneTexts());
 
                 onComplete?.Invoke(true);
                 yield break;
@@ -385,6 +391,35 @@ namespace FineLocalization.Scripts.Runtime
 
         // Reusable buffer to avoid HashSet alloc per call.
         private static readonly HashSet<TMP_FontAsset> _seenFontsBuffer = new();
+
+        /// <summary>
+        /// Forces a TMP mesh rebuild on all active scene texts without touching the fallback
+        /// registration. Called when the font is already loaded but the text content just
+        /// changed (e.g. language switched after LoadFromCsvMap).
+        /// </summary>
+        private IEnumerator RebuildSceneTexts()
+        {
+            yield return null; // wait one frame so SetText calls have all settled
+
+#if UNITY_2022_2_OR_NEWER
+            var texts = UnityEngine.Object.FindObjectsByType<TMP_Text>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+#else
+            var texts = UnityEngine.Object.FindObjectsOfType<TMP_Text>(true);
+#endif
+            FineLocalizationLogger.Log(
+                () => $"[RemoteFontBundleLoader] RebuildSceneTexts: forçando rebuild em {texts.Length} TMP_Text(s)."
+            );
+
+            for (int i = 0; i < texts.Length; i++)
+            {
+                var t = texts[i];
+                if (t == null || !t.gameObject.activeInHierarchy) continue;
+                t.SetAllDirty();
+                t.havePropertiesChanged = true;
+                t.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+            }
+        }
 
         /// <summary>
         /// Strategy:
