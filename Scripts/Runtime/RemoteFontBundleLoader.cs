@@ -329,14 +329,18 @@ namespace FineLocalization.Scripts.Runtime
                     $"Glyph Count: {fontAsset.glyphTable?.Count ?? 0}"
             );
             RegisterFallback(fontAsset);
+
+            // Mark as loaded BEFORE ApplyFallbackToSceneAndRebuild so any concurrent
+            // EnsureFontForLanguage call (e.g. triggered by LoadFromCsvMap->OnLocalizationChanged)
+            // hits the cache instead of starting a second download.
+            _loadedLanguages.Add(prefix);
+            _loadingLanguages.Remove(prefix);
+
             yield return StartCoroutine(ApplyFallbackToSceneAndRebuild(fontAsset));
 
             FineLocalizationLogger.Log(
                 () => $"[RemoteFontBundleLoader] Fonte registrada como fallback: {fontAsset.name}"
             );
-
-            _loadedLanguages.Add(prefix);
-            _loadingLanguages.Remove(prefix);
 
             bundle.Unload(false);
 
