@@ -360,6 +360,13 @@ namespace FineLocalization.Scripts.Runtime
                     $"Character Count: {fontAsset.characterTable?.Count ?? 0} | " +
                     $"Glyph Count: {fontAsset.glyphTable?.Count ?? 0}"
             );
+
+            // When a TMP_FontAsset is loaded from an AssetBundle the material dependency
+            // is sometimes not included/serialized, leaving material == null. TMP crashes
+            // trying to create the fallback sub-mesh without a material. Create one at
+            // runtime using the font's atlas texture and TMP's standard Distance Field shader.
+            EnsureFontMaterial(fontAsset);
+
             RegisterFallback(fontAsset);
 
             // Apply fallback to ALL scene fonts and force mesh rebuild FIRST.
@@ -581,6 +588,69 @@ namespace FineLocalization.Scripts.Runtime
                 return trimmedBaseUrl + fileName;
 
             return trimmedBaseUrl + "/" + fileName;
+        }
+
+        /// <summary>
+        /// Ensures the TMP_FontAsset loaded from an AssetBundle has a valid material.
+        /// When the bundle doesn't include the material as a dependency (common with
+        /// remote/runtime bundles), TMP crashes trying to render fallback glyphs.
+        /// We reconstruct the material from the atlas texture using TMP's Distance Field shader.
+        /// </summary>
+        private static void EnsureFontMaterial(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null) return;
+            if (fontAsset.material != null) return; // already fine
+
+            var atlasTexture = fontAsset.atlasTexture;
+            if (atlasTexture == null)
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[RemoteFontBundleLoader] EnsureFontMaterial: '{fontAsset.name}' não tem atlas texture. Material não criado."
+                );
+                return;
+            }
+
+            // Prefer the mobile variant (fewer fillrate operations on devices).
+            var shader = Shader.Find("TextMeshPro/Mobile/Distance Field")
+                      ?? Shader.Find("TextMeshPro/Distance Field");
+
+            if (shader == null)
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[RemoteFontBundleLoader] EnsureFontMaterial: shader TMP Distance Field não encontrado. " +
+                          "Verifique se TextMeshPro está instalado corretamente."
+                );
+                return;
+            }
+
+            var mat = new Material(shader)
+            {
+                name = fontAsset.name + " Material"
+            };
+
+            // _MainTex is the SDF atlas texture slot on all TMP Distance Field shaders.
+            mat.SetTexture(ShaderUtilities.ID_MainTex, atlasTexture);
+
+            // Copy standard SDF rendering properties from TMP Settings default material
+            // so padding/scale are correct. Fall back gracefully if TMP Settings isn't set up.
+            var settingsMat = TMP_Settings.defaultFontAsset?.material;
+            if (settingsMat != null)
+            {
+                // Padding / softness
+                if (settingsMat.HasProperty(ShaderUtilities.ID_GradientScale))
+                    mat.SetFloat(ShaderUtilities.ID_GradientScale, settingsMat.GetFloat(ShaderUtilities.ID_GradientScale));
+                if (settingsMat.HasProperty(ShaderUtilities.ID_WeightNormal))
+                    mat.SetFloat(ShaderUtilities.ID_WeightNormal, settingsMat.GetFloat(ShaderUtilities.ID_WeightNormal));
+                if (settingsMat.HasProperty(ShaderUtilities.ID_WeightBold))
+                    mat.SetFloat(ShaderUtilities.ID_WeightBold, settingsMat.GetFloat(ShaderUtilities.ID_WeightBold));
+            }
+
+            fontAsset.material = mat;
+
+            FineLocalizationLogger.Log(
+                () => $"[RemoteFontBundleLoader] EnsureFontMaterial: material criado para '{fontAsset.name}' " +
+                      $"usando shader '{shader.name}' | atlas='{atlasTexture.name}' ({atlasTexture.width}x{atlasTexture.height})"
+            );
         }
 
         private void RegisterFallback(TMP_FontAsset fontAsset)
