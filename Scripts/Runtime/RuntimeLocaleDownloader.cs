@@ -71,7 +71,8 @@ namespace FineLocalization.Scripts.Runtime
 
         public static void SetRequestedLanguage(string language)
         {
-            RequestedLanguage = language;
+            RequestedLanguage = NormalizeLanguageCandidate(language);
+            FineLocalizationLogger.Log(() => $"[FineLocalization] Requested runtime language: '{RequestedLanguage}'.");
         }
 
         private readonly Dictionary<string, string> _csvData = new();
@@ -272,7 +273,14 @@ namespace FineLocalization.Scripts.Runtime
             if (string.IsNullOrWhiteSpace(requestedLanguage))
                 requestedLanguage = LocalizationManager.Language;
 
-            return requestedLanguage.Trim().Trim('\uFEFF').Replace('_', '-').ToLowerInvariant();
+            return NormalizeLanguageCandidate(requestedLanguage);
+        }
+
+        private static string NormalizeLanguageCandidate(string language)
+        {
+            return string.IsNullOrWhiteSpace(language)
+                ? string.Empty
+                : language.Trim().Trim('\uFEFF').Replace('_', '-').ToLowerInvariant();
         }
 
         private static string TryResolveLanguageFromLaunchUrl()

@@ -12,14 +12,18 @@ namespace FineLocalization.Runtime
                 ? LocalizationManager.Language
                 : language.Trim().Trim('\uFEFF').Replace('_', '-').ToLowerInvariant();
 
+            if (languages == null || languages.Count == 0)
+                return lang;
+
             string[] division = lang.Split('-');
             if (!languages.ContainsKey(lang) && division.Length > 0)
-                lang = CheckIfContainsLanguage(division[0], languages);
+                lang = CheckIfContainsLanguage(division[0], languages, lang);
             return lang;
         }
 
         private static string CheckIfContainsLanguage(string language,
-            Dictionary<string, Dictionary<string, string>> dictionary)
+            Dictionary<string, Dictionary<string, string>> dictionary,
+            string fallbackLanguage)
         {
             foreach (var lang in dictionary.Keys)
             {
@@ -27,8 +31,9 @@ namespace FineLocalization.Runtime
                 if (!string.Equals(language, l, System.StringComparison.OrdinalIgnoreCase)) continue;
                 return lang;
             }
-            FineLocalizationLogger.LogWarning("[FineLocalization] language key not found; using default");
-            return LocalizationManager.Language;
+
+            FineLocalizationLogger.LogWarning(() => $"[FineLocalization] language key not found: {fallbackLanguage}");
+            return fallbackLanguage;
         }
     }
 }
