@@ -98,6 +98,12 @@ namespace FineLocalization.Scripts.Runtime
         private readonly HashSet<string> _loadedLanguages = new();
         private readonly HashSet<string> _loadingLanguages = new();
 
+        // Keeps strong GC references to runtime-created font assets and their materials.
+        // Materials created with `new Material()` can be collected by Unity's asset GC
+        // (Resources.UnloadUnusedAssets) if only held by fallbackFontAssetTable — which
+        // is a runtime-modified list on a project asset, not tracked by Unity's ref count.
+        private readonly Dictionary<string, TMP_FontAsset> _runtimeFontAssets = new();
+
         private void OnEnable()
         {
             if (loadOnLocalizationChanged)
@@ -367,6 +373,10 @@ namespace FineLocalization.Scripts.Runtime
             // runtime using the font's atlas texture and TMP's standard Distance Field shader.
             EnsureFontMaterial(fontAsset);
 
+            // Keep a strong reference so Unity's asset GC (Resources.UnloadUnusedAssets)
+            // cannot destroy the runtime material between load and rebuild.
+            _runtimeFontAssets[prefix] = fontAsset;
+
             RegisterFallback(fontAsset);
 
             // Apply fallback to ALL scene fonts and force mesh rebuild FIRST.
@@ -408,6 +418,11 @@ namespace FineLocalization.Scripts.Runtime
         {
             yield return null; // wait one frame so SetText calls have all settled
 
+            // Re-ensure materials are valid — Unity's asset GC may have collected the
+            // runtime materials created in EnsureFontMaterial between load and rebuild.
+            foreach (var fa in _runtimeFontAssets.Values)
+                EnsureFontMaterial(fa);
+
 #if UNITY_2022_2_OR_NEWER
             var texts = UnityEngine.Object.FindObjectsByType<TMP_Text>(
                 FindObjectsInactive.Include, FindObjectsSortMode.None);
@@ -441,6 +456,9 @@ namespace FineLocalization.Scripts.Runtime
         private IEnumerator ApplyFallbackToSceneAndRebuild(TMP_FontAsset fontAsset)
         {
             yield return null;
+
+            // Re-ensure material is valid before rebuilding (GC safety).
+            EnsureFontMaterial(fontAsset);
 
             // 1) Register fallback on font assets ---------------------------------------
             _seenFontsBuffer.Clear();
