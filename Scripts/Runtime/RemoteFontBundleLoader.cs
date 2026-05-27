@@ -376,6 +376,12 @@ namespace FineLocalization.Scripts.Runtime
             if (texts == null || texts.Length == 0)
                 yield break;
 
+            // Repair/remove any global TMP fallbacks with null materials BEFORE starting the
+            // rebuild loop. TMP_MaterialManager.GetFallbackMaterial walks TMP_Settings.fallbackFontAssets
+            // for every character not found in the primary font; a null material there causes a crash
+            // that ValidateFontTreeForText (which only checks local fallbackFontAssetTable) cannot prevent.
+            RepairGlobalTMPFallbacks();
+
             int rebuilt = 0;
             int skipped = 0;
             int batch = Mathf.Max(1, rebuildBatchSize);
@@ -405,8 +411,12 @@ namespace FineLocalization.Scripts.Runtime
                     text.ForceMeshUpdate(ignoreActiveState: false, forceTextReparsing: true);
                     rebuilt++;
                 }
-                catch (Exception ex) when (ex is UnassignedReferenceException || ex is MissingReferenceException || ex is NullReferenceException)
+                catch (Exception ex)
                 {
+                    // Catch all exceptions so a single bad TMP_Text never aborts the whole rebuild.
+                    // Known cases: UnassignedReferenceException (null m_Material property),
+                    //              MissingReferenceException (fake-null / destroyed native object),
+                    //              NullReferenceException (font or material became null mid-frame).
                     skipped++;
                     FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Rebuild falhou e foi ignorado. Texto='{text.name}', fonte='{DescribeFont(text.font)}', erro='{ex.GetType().Name}: {ex.Message}'.");
                 }
@@ -523,6 +533,42 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, fontAsset);
+        }
+
+        /// <summary>
+        /// Validates every entry in <c>TMP_Settings.fallbackFontAssets</c> and tries to repair
+        /// null materials in place. Entries that cannot be repaired are removed from the list.
+        ///
+        /// This must be called before any <c>ForceMeshUpdate</c> pass because TMP walks the
+        /// global fallback list for every character not found in the primary font. If any entry
+        /// has a null material, TMP_MaterialManager.GetFallbackMaterial throws even though
+        /// <c>ValidateFontTreeForText</c> (which only checks local fallbackFontAssetTable) passed.
+        /// </summary>
+        private void RepairGlobalTMPFallbacks()
+        {
+            var globals = TMP_Settings.fallbackFontAssets;
+            if (globals == null || globals.Count == 0)
+                return;
+
+            for (int i = globals.Count - 1; i >= 0; i--)
+            {
+                var font = globals[i];
+                if (font == null)
+                {
+                    globals.RemoveAt(i);
+                    continue;
+                }
+
+                RepairFontMaterial(font, null);
+
+                if (!IsUsableFontAsset(font))
+                {
+                    FineLocalizationLogger.LogWarning(
+                        () => $"[RemoteFontBundleLoader] Removendo fallback global inválido '{font.name}'. {DescribeFont(font)}"
+                    );
+                    globals.RemoveAt(i);
+                }
+            }
         }
 
         private static List<TMP_FontAsset> TryCreateGlobalFallbackList()
@@ -717,6 +763,10 @@ namespace FineLocalization.Scripts.Runtime
             if (TryNormalizeMaterial(preferredMaterial, atlasTexture))
             {
                 preferredMaterial.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+                // Keep a strong managed reference so the C# GC cannot collect this
+                // bundle-sourced material between the first load and subsequent rebuilds.
+                if (!_runtimeMaterials.Contains(preferredMaterial))
+                    _runtimeMaterials.Add(preferredMaterial);
                 fontAsset.material = preferredMaterial;
                 return;
             }
