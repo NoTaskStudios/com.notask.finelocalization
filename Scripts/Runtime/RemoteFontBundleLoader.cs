@@ -215,6 +215,15 @@ namespace FineLocalization.Scripts.Runtime
             yield return StartCoroutine(RebuildTextsBatched(FindSceneTexts()));
         }
 
+        public bool ShouldLoadRemoteFontForLanguage(string language)
+        {
+            if (string.IsNullOrWhiteSpace(language))
+                return false;
+
+            var normalizedLanguage = language.Trim().ToLowerInvariant();
+            return !IsLatinScript(normalizedLanguage) && FindConfig(normalizedLanguage) != null;
+        }
+
         public IEnumerator EnsureFontForLanguage(string language, Action<bool> onComplete = null)
         {
             FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] EnsureFontForLanguage: {language}");

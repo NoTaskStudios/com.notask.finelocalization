@@ -205,15 +205,16 @@ namespace FineLocalization.Scripts.Runtime
             LocalizationManager.ReloadAll(targetLanguage, false);
             targetLanguage = LocalizationManager.Language;
 
-            if (loadRemoteFontBeforeApplyingLocalization && remoteFontBundleLoader != null)
+            var shouldLoadRemoteFont = ShouldLoadRemoteFont(targetLanguage);
+            if (shouldLoadRemoteFont)
             {
                 yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage);
-                remoteFontBundleLoader.IgnoreNextLocalizationChanged();
             }
 
+            IgnoreNextRemoteFontLocalizationEvent();
             LocalizationManager.Refresh();
 
-            if (loadRemoteFontBeforeApplyingLocalization && remoteFontBundleLoader != null)
+            if (shouldLoadRemoteFont)
                 yield return remoteFontBundleLoader.RebuildCurrentTexts();
 
             FineLocalizationLogger.Log(
@@ -231,17 +232,32 @@ namespace FineLocalization.Scripts.Runtime
 
             LocalizationManager.LoadFromCsvMap(csvData, targetLanguage, false);
             targetLanguage = LocalizationManager.Language;
+            FineLocalizationLogger.Log(() => $"[FineLocalization] Runtime language resolved: requested='{ResolveRequestedLanguageCandidate()}', applied='{targetLanguage}'.");
 
-            if (loadRemoteFontBeforeApplyingLocalization && remoteFontBundleLoader != null)
+            var shouldLoadRemoteFont = ShouldLoadRemoteFont(targetLanguage);
+            if (shouldLoadRemoteFont)
             {
                 yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage);
-                remoteFontBundleLoader.IgnoreNextLocalizationChanged();
             }
 
+            IgnoreNextRemoteFontLocalizationEvent();
             LocalizationManager.Refresh();
 
-            if (loadRemoteFontBeforeApplyingLocalization && remoteFontBundleLoader != null)
+            if (shouldLoadRemoteFont)
                 yield return remoteFontBundleLoader.RebuildCurrentTexts();
+        }
+
+        private bool ShouldLoadRemoteFont(string language)
+        {
+            return loadRemoteFontBeforeApplyingLocalization &&
+                   remoteFontBundleLoader != null &&
+                   remoteFontBundleLoader.ShouldLoadRemoteFontForLanguage(language);
+        }
+
+        private void IgnoreNextRemoteFontLocalizationEvent()
+        {
+            if (loadRemoteFontBeforeApplyingLocalization && remoteFontBundleLoader != null)
+                remoteFontBundleLoader.IgnoreNextLocalizationChanged();
         }
 
         private string ResolveRequestedLanguageCandidate()
@@ -256,7 +272,7 @@ namespace FineLocalization.Scripts.Runtime
             if (string.IsNullOrWhiteSpace(requestedLanguage))
                 requestedLanguage = LocalizationManager.Language;
 
-            return requestedLanguage.Trim().ToLowerInvariant();
+            return requestedLanguage.Trim().Trim('\uFEFF').Replace('_', '-').ToLowerInvariant();
         }
 
         private static string TryResolveLanguageFromLaunchUrl()

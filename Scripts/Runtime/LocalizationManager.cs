@@ -11,7 +11,7 @@ namespace FineLocalization.Runtime
         public static event Action OnLocalizationChanged = () => { };
 
         // Dicionário: idioma -> (chave -> valor)
-        public static Dictionary<string, Dictionary<string, string>> Dictionary = new();
+        public static Dictionary<string, Dictionary<string, string>> Dictionary = new(StringComparer.OrdinalIgnoreCase);
 
         // CSVs baixados em runtime (memória). Chave = sheet.Name
         private static Dictionary<string, string> _runtimeCsvOverride = null;
@@ -213,7 +213,7 @@ namespace FineLocalization.Runtime
                     // Cria dicionários por idioma (pula colunas ignoradas e Key)
                     for (var i = firstLanguageColumnIndex; i < header.Count; i++)
                     {
-                        var lang = header[i];
+                        var lang = NormalizeLanguageKey(header[i]);
                         if (string.IsNullOrWhiteSpace(lang)) continue;
 
                         if (!Dictionary.ContainsKey(lang))
@@ -239,7 +239,7 @@ namespace FineLocalization.Runtime
                     
                         for (var j = firstLanguageColumnIndex; j < header.Count; j++)
                         {
-                            var lang = header[j];
+                            var lang = NormalizeLanguageKey(header[j]);
                             if (string.IsNullOrWhiteSpace(lang)) continue;
 
                             var value = j < cols.Count ? cols[j] : string.Empty;
@@ -299,6 +299,8 @@ namespace FineLocalization.Runtime
         public static void SetTranslation(string language, string key, string value,
             bool persist = false, string sheetName = null)
         {
+            language = NormalizeLanguageKey(language);
+
             if (!Dictionary.ContainsKey(language))
                 Dictionary[language] = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -478,6 +480,13 @@ namespace FineLocalization.Runtime
                 cols[i] = Escape(cols[i]);
 
             return string.Join(",", cols);
+        }
+
+        private static string NormalizeLanguageKey(string language)
+        {
+            return string.IsNullOrWhiteSpace(language)
+                ? string.Empty
+                : language.Trim().Trim('\uFEFF').Replace('_', '-').ToLowerInvariant();
         }
     }
 }
