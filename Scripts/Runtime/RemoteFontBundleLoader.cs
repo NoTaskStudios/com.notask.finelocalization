@@ -610,66 +610,107 @@ namespace FineLocalization.Scripts.Runtime
 
         /// <summary>
         /// Ensures the TMP_FontAsset loaded from an AssetBundle has a valid material.
-        /// When the bundle doesn't include the material as a dependency (common with
-        /// remote/runtime bundles), TMP crashes trying to render fallback glyphs.
-        /// We reconstruct the material from the atlas texture using TMP's Distance Field shader.
+        ///
+        /// Root cause: AssetBundles built for remote/runtime use often omit the
+        /// TMP_FontAsset's material (it was null in the Editor when the bundle was built).
+        /// TMP crashes with UnassignedReferenceException when it tries to create a
+        /// fallback sub-mesh without a material.
+        ///
+        /// Strategy:
+        ///  1. Clone the material from an existing project TMP font (guaranteed valid).
+        ///  2. Swap the _MainTex to the bundle font's atlas texture.
+        ///  3. Mark both the material and the font asset with DontUnloadUnusedAsset so
+        ///     Unity's native asset-GC (Resources.UnloadUnusedAssets) cannot destroy them
+        ///     while they are only referenced through runtime-modified lists that the
+        ///     native GC does not track.
+        ///  4. Store the material in _runtimeMaterials (managed strong reference) as an
+        ///     additional safety net.
         /// </summary>
-        private static void EnsureFontMaterial(TMP_FontAsset fontAsset)
+        private void EnsureFontMaterial(TMP_FontAsset fontAsset)
         {
             if (fontAsset == null) return;
-            if (fontAsset.material != null) return; // already fine
+
+            // Prevent native GC from destroying the bundle-loaded font asset.
+            fontAsset.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+
+            // Check for null OR for a fake-null Unity Object (native object destroyed).
+            var currentMat = fontAsset.material;
+            bool materialMissing = currentMat == null;
+
+            if (!materialMissing) return; // already has a valid material
 
             var atlasTexture = fontAsset.atlasTexture;
             if (atlasTexture == null)
             {
                 FineLocalizationLogger.LogWarning(
-                    () => $"[RemoteFontBundleLoader] EnsureFontMaterial: '{fontAsset.name}' não tem atlas texture. Material não criado."
+                    () => $"[RemoteFontBundleLoader] EnsureFontMaterial: '{fontAsset.name}' não tem atlasTexture. Material não pode ser criado."
                 );
                 return;
             }
 
-            // Prefer the mobile variant (fewer fillrate operations on devices).
-            var shader = Shader.Find("TextMeshPro/Mobile/Distance Field")
-                      ?? Shader.Find("TextMeshPro/Distance Field");
-
-            if (shader == null)
+            // Find a valid source material to clone from. Cloning via Object.Instantiate
+            // produces a fully-initialized Material recognized by Unity's native layer —
+            // unlike `new Material(shader)` which can be silently GC'd by the native GC.
+            Material sourceMat = FindValidTMPMaterial(fontAsset);
+            if (sourceMat == null)
             {
                 FineLocalizationLogger.LogWarning(
-                    () => $"[RemoteFontBundleLoader] EnsureFontMaterial: shader TMP Distance Field não encontrado. " +
-                          "Verifique se TextMeshPro está instalado corretamente."
+                    () => $"[RemoteFontBundleLoader] EnsureFontMaterial: não foi possível encontrar material TMP base para clonar."
                 );
                 return;
             }
 
-            var mat = new Material(shader)
-            {
-                name = fontAsset.name + " Material"
-            };
+            var mat = Object.Instantiate(sourceMat);
+            mat.name = fontAsset.name + " Material";
 
-            // _MainTex is the SDF atlas texture slot on all TMP Distance Field shaders.
+            // Swap the atlas texture to this font's atlas.
             mat.SetTexture(ShaderUtilities.ID_MainTex, atlasTexture);
 
-            // Copy standard SDF rendering properties from TMP Settings default material
-            // so padding/scale are correct. Fall back gracefully if TMP Settings isn't set up.
-            var settingsMat = TMP_Settings.defaultFontAsset?.material;
-            if (settingsMat != null)
-            {
-                // Padding / softness
-                if (settingsMat.HasProperty(ShaderUtilities.ID_GradientScale))
-                    mat.SetFloat(ShaderUtilities.ID_GradientScale, settingsMat.GetFloat(ShaderUtilities.ID_GradientScale));
-                if (settingsMat.HasProperty(ShaderUtilities.ID_WeightNormal))
-                    mat.SetFloat(ShaderUtilities.ID_WeightNormal, settingsMat.GetFloat(ShaderUtilities.ID_WeightNormal));
-                if (settingsMat.HasProperty(ShaderUtilities.ID_WeightBold))
-                    mat.SetFloat(ShaderUtilities.ID_WeightBold, settingsMat.GetFloat(ShaderUtilities.ID_WeightBold));
-            }
+            // Prevent native asset-GC from destroying the cloned material.
+            mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+
+            // Strong managed reference so the C# GC also cannot collect it.
+            _runtimeMaterials.Add(mat);
 
             fontAsset.material = mat;
 
             FineLocalizationLogger.Log(
-                () => $"[RemoteFontBundleLoader] EnsureFontMaterial: material criado para '{fontAsset.name}' " +
-                      $"usando shader '{shader.name}' | atlas='{atlasTexture.name}' ({atlasTexture.width}x{atlasTexture.height})"
+                () => $"[RemoteFontBundleLoader] EnsureFontMaterial: material clonado de '{sourceMat.name}' " +
+                      $"para '{fontAsset.name}' | atlas='{atlasTexture.name}' ({atlasTexture.width}x{atlasTexture.height}) | " +
+                      $"mat instanceID={mat.GetInstanceID()} | fontAsset.material after set: '{fontAsset.material?.name ?? "NULL"}'"
             );
         }
+
+        /// <summary>
+        /// Finds a valid TMP Material to use as clone source.
+        /// Tries: mainFontAssets list → TMP_Settings.defaultFontAsset → any loaded TMP_FontAsset.
+        /// </summary>
+        private Material FindValidTMPMaterial(TMP_FontAsset exclude)
+        {
+            // 1) Prefer the first mainFontAsset with a valid material (project asset, always valid).
+            if (mainFontAssets != null)
+            {
+                foreach (var f in mainFontAssets)
+                    if (f != null && f != exclude && f.material != null)
+                        return f.material;
+            }
+
+            // 2) TMP Settings default font.
+            var defaultMat = TMP_Settings.defaultFontAsset?.material;
+            if (defaultMat != null) return defaultMat;
+
+            // 3) Any loaded TMP_FontAsset in memory.
+            var allFonts = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
+            foreach (var f in allFonts)
+                if (f != null && f != exclude && f.material != null)
+                    return f.material;
+
+            return null;
+        }
+
+        // Strong managed references to runtime-created materials so the C# GC cannot
+        // collect them independently of the font assets that reference them.
+        private readonly List<Material> _runtimeMaterials = new();
 
         private void RegisterFallback(TMP_FontAsset fontAsset)
         {
