@@ -236,10 +236,16 @@ namespace FineLocalization.Scripts.Runtime
             if (!_loadingLanguages.Add(prefix))
             {
                 FineLocalizationLogger.Log(
-                    () => $"[RemoteFontBundleLoader] Fonte de '{prefix}' já está carregando."
+                    () => $"[RemoteFontBundleLoader] Fonte de '{prefix}' já está carregando. Aguardando conclusão..."
                 );
 
-                onComplete?.Invoke(true);
+                // Wait for the concurrent download to finish before returning,
+                // so callers (e.g. RuntimeLocaleDownloader) don't proceed to
+                // LoadFromCsvMap before the fallback is actually registered.
+                while (_loadingLanguages.Contains(prefix))
+                    yield return null;
+
+                onComplete?.Invoke(_loadedLanguages.Contains(prefix));
                 yield break;
             }
 
