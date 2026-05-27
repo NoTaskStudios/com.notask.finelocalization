@@ -36,6 +36,12 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Idioma inicial opcional para aplicar antes de liberar o evento de localização pronta. Ex: ja-jp")]
         [SerializeField] private string initialLanguageOverride;
 
+        [Tooltip("Quando não há Initial Language nem lang na URL, aguarda SetRequestedLanguage antes de aplicar en-us.")]
+        [SerializeField] private bool waitForExplicitRequestedLanguage = true;
+
+        [Tooltip("Tempo máximo de espera por SetRequestedLanguage antes de usar o idioma atual.")]
+        [SerializeField] private float requestedLanguageWaitTimeoutSeconds = 3f;
+
         private static string PersistentCsvDir =>
             Path.Combine(Application.persistentDataPath, "FineLocalization/Resources/Localization");
 
@@ -67,11 +73,13 @@ namespace FineLocalization.Scripts.Runtime
         /// Optional runtime language requested by the host game before the CSV download finishes.
         /// Set this from URL/query parameters before waiting for OnDownloadLocalizationComplete.
         /// </summary>
-        public static string RequestedLanguage { get; set; }
+        public static string RequestedLanguage { get; private set; }
+        public static bool HasExplicitRequestedLanguage { get; private set; }
 
         public static void SetRequestedLanguage(string language)
         {
             RequestedLanguage = NormalizeLanguageCandidate(language);
+            HasExplicitRequestedLanguage = !string.IsNullOrWhiteSpace(RequestedLanguage);
             FineLocalizationLogger.Log(() => $"[FineLocalization] Requested runtime language: '{RequestedLanguage}'.");
         }
 
@@ -98,6 +106,7 @@ namespace FineLocalization.Scripts.Runtime
         private IEnumerator NotifyLocalizationAlreadyReady()
         {
             yield return null;
+            yield return WaitForRequestedLanguageIfNeeded();
             yield return UseBundledCsvs();
         }
         /// <summary>
@@ -113,6 +122,8 @@ namespace FineLocalization.Scripts.Runtime
             LocalizationManager.RuntimeCsvResolver = GetCsvContent;
             LocalizationManager.RuntimeCsvPersistenceHook = PersistCsvContent;
             _csvData.Clear();
+
+            yield return WaitForRequestedLanguageIfNeeded();
 
             if (ShouldUseBundledCsvs())
             {
@@ -200,6 +211,7 @@ namespace FineLocalization.Scripts.Runtime
         {
             LocalizationManager.RuntimeCsvResolver = GetCsvContent;
             LocalizationManager.RuntimeCsvPersistenceHook = PersistCsvContent;
+            yield return WaitForRequestedLanguageIfNeeded();
 
             var targetLanguage = ResolveRequestedLanguageCandidate();
 
@@ -263,7 +275,7 @@ namespace FineLocalization.Scripts.Runtime
 
         private string ResolveRequestedLanguageCandidate()
         {
-            var requestedLanguage = !string.IsNullOrWhiteSpace(RequestedLanguage)
+            var requestedLanguage = HasExplicitRequestedLanguage && !string.IsNullOrWhiteSpace(RequestedLanguage)
                 ? RequestedLanguage
                 : initialLanguageOverride;
 
@@ -274,6 +286,25 @@ namespace FineLocalization.Scripts.Runtime
                 requestedLanguage = LocalizationManager.Language;
 
             return NormalizeLanguageCandidate(requestedLanguage);
+        }
+
+        private IEnumerator WaitForRequestedLanguageIfNeeded()
+        {
+            if (!waitForExplicitRequestedLanguage)
+                yield break;
+
+            if (HasExplicitRequestedLanguage ||
+                !string.IsNullOrWhiteSpace(initialLanguageOverride) ||
+                !string.IsNullOrWhiteSpace(TryResolveLanguageFromLaunchUrl()))
+            {
+                yield break;
+            }
+
+            var timeout = Mathf.Max(0f, requestedLanguageWaitTimeoutSeconds);
+            var start = Time.realtimeSinceStartup;
+
+            while (!HasExplicitRequestedLanguage && Time.realtimeSinceStartup - start < timeout)
+                yield return null;
         }
 
         private static string NormalizeLanguageCandidate(string language)
