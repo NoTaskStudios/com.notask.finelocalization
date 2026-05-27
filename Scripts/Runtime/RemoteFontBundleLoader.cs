@@ -71,12 +71,18 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Se marcado, não ignora a própria fonte remota mesmo que o nome bata com ignoredFontNameContains.")]
         [SerializeField] private bool allowRemoteFontWhenIgnoredByName = true;
 
+        [Tooltip("Remove fallbacks remotos de outros idiomas configurados quando uma fonte nova for aplicada.")]
+        [SerializeField] private bool removeOtherRemoteLanguageFallbacks = true;
+
         [Header("Localization Integration")]
         [Tooltip("Carrega o bundle de fonte automaticamente quando LocalizationManager.Language mudar.")]
         [SerializeField] private bool loadOnLocalizationChanged = true;
 
         [Tooltip("Tenta carregar a fonte do idioma atual quando este componente for habilitado.")]
         [SerializeField] private bool loadCurrentLanguageOnEnable = false;
+
+        [Tooltip("Evita carregar a fonte do idioma default antes do RuntimeLocaleDownloader resolver o idioma inicial.")]
+        [SerializeField] private bool waitForRuntimeLocalizationReadyOnEnable = true;
 
         [Header("Script Detection (Optimization)")]
         [Tooltip("Quando marcado, idiomas latinos (en, pt, es, fr...) não baixam bundle remoto.")]
@@ -117,7 +123,16 @@ namespace FineLocalization.Scripts.Runtime
                 LocalizationManager.OnLocalizationChanged += EnsureCurrentLanguageFont;
 
             if (loadCurrentLanguageOnEnable)
+            {
+                if (waitForRuntimeLocalizationReadyOnEnable &&
+                    !RuntimeLocaleDownloader.IsLocalizationReady &&
+                    HasRuntimeLocaleDownloaderInScene())
+                {
+                    return;
+                }
+
                 EnsureCurrentLanguageFont();
+            }
         }
 
         private void OnDisable()
@@ -140,6 +155,15 @@ namespace FineLocalization.Scripts.Runtime
         public void IgnoreNextLocalizationChanged()
         {
             _ignoreNextLocalizationChanged = true;
+        }
+
+        private static bool HasRuntimeLocaleDownloaderInScene()
+        {
+#if UNITY_2022_2_OR_NEWER
+            return FindFirstObjectByType<RuntimeLocaleDownloader>() != null;
+#else
+            return FindObjectOfType<RuntimeLocaleDownloader>() != null;
+#endif
         }
 
         public void TestLanguage(string language)
@@ -206,6 +230,7 @@ namespace FineLocalization.Scripts.Runtime
 
             if (IsLatinScript(normalizedLanguage))
             {
+                RemoveRemoteFallbacksForOtherLanguages(null);
                 FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] SKIP '{normalizedLanguage}': script Latin detectado.");
                 onComplete?.Invoke(true);
                 yield break;
@@ -351,6 +376,8 @@ namespace FineLocalization.Scripts.Runtime
                 FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] ApplyFallback cancelado: fonte remota inválida: {DescribeFont(remoteFont)}");
                 yield break;
             }
+
+            RemoveRemoteFallbacksForOtherLanguages(remoteFont);
 
             _seenFonts.Clear();
 
@@ -549,7 +576,27 @@ namespace FineLocalization.Scripts.Runtime
                 FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Adicionado aos fallbacks globais: {fontAsset.name}. Total={globalFallbacks.Count}");
             }
 
+            RemoveRemoteFallbacksForOtherLanguages(fontAsset);
+
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, fontAsset);
+        }
+
+        private void RemoveRemoteFallbacksForOtherLanguages(TMP_FontAsset preferredFallback)
+        {
+            if (!removeOtherRemoteLanguageFallbacks)
+                return;
+
+            RemoveConfiguredRemoteFallbacks(TMP_Settings.fallbackFontAssets, preferredFallback);
+
+            if (mainFontAssets != null)
+            {
+                for (int i = 0; i < mainFontAssets.Count; i++)
+                    RemoveConfiguredRemoteFallbacks(mainFontAssets[i]?.fallbackFontAssetTable, preferredFallback);
+            }
+
+            var texts = FindSceneTexts();
+            for (int i = 0; i < texts.Length; i++)
+                RemoveConfiguredRemoteFallbacks(texts[i]?.font?.fallbackFontAssetTable, preferredFallback);
         }
 
         /// <summary>
@@ -693,6 +740,51 @@ namespace FineLocalization.Scripts.Runtime
                 if (preferredFallback != null && item != preferredFallback && IsSameRemoteFontFamily(item, preferredFallback))
                     list.RemoveAt(i);
             }
+        }
+
+        private void RemoveConfiguredRemoteFallbacks(List<TMP_FontAsset> list, TMP_FontAsset preferredFallback)
+        {
+            if (list == null)
+                return;
+
+            for (int i = list.Count - 1; i >= 0; i--)
+            {
+                var item = list[i];
+                if (item == null)
+                {
+                    list.RemoveAt(i);
+                    continue;
+                }
+
+                if (item == preferredFallback)
+                    continue;
+
+                if (IsConfiguredRemoteFont(item))
+                    list.RemoveAt(i);
+            }
+        }
+
+        private bool IsConfiguredRemoteFont(TMP_FontAsset font)
+        {
+            if (font == null || bundles == null)
+                return false;
+
+            for (int i = 0; i < bundles.Count; i++)
+            {
+                var config = bundles[i];
+                if (config == null)
+                    continue;
+
+                if (!string.IsNullOrWhiteSpace(config.fontAssetName) &&
+                    font.name.Equals(config.fontAssetName.Trim(), StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                if (!string.IsNullOrWhiteSpace(config.languagePrefix) &&
+                    font.name.IndexOf(config.languagePrefix.Trim(), StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+
+            return false;
         }
 
         private bool ShouldIgnoreTargetFont(TMP_FontAsset targetFont, TMP_FontAsset remoteFont)

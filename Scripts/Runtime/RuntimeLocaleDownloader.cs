@@ -42,6 +42,11 @@ namespace FineLocalization.Scripts.Runtime
         private const string UrlPattern =
             "https://docs.google.com/spreadsheets/d/{0}/export?format=csv&gid={1}";
 
+        private static readonly string[] LanguageQueryKeys =
+        {
+            "lang", "language", "locale", "culture", "lng"
+        };
+
         public static event Action<bool> OnDownloadLocalizationComplete = _ => { };
         public static event Action<bool> OnAllSheetsDownloadedComplete = _ => { };
 
@@ -246,9 +251,75 @@ namespace FineLocalization.Scripts.Runtime
                 : initialLanguageOverride;
 
             if (string.IsNullOrWhiteSpace(requestedLanguage))
+                requestedLanguage = TryResolveLanguageFromLaunchUrl();
+
+            if (string.IsNullOrWhiteSpace(requestedLanguage))
                 requestedLanguage = LocalizationManager.Language;
 
             return requestedLanguage.Trim().ToLowerInvariant();
+        }
+
+        private static string TryResolveLanguageFromLaunchUrl()
+        {
+            var url = Application.absoluteURL;
+            if (string.IsNullOrWhiteSpace(url))
+                return null;
+
+            var queryStart = url.IndexOf('?');
+            if (queryStart < 0)
+                return null;
+
+            var queryEnd = url.IndexOf('#', queryStart + 1);
+            var query = queryEnd >= 0
+                ? url.Substring(queryStart + 1, queryEnd - queryStart - 1)
+                : url.Substring(queryStart + 1);
+
+            if (string.IsNullOrWhiteSpace(query))
+                return null;
+
+            var pairs = query.Split('&');
+            for (int i = 0; i < pairs.Length; i++)
+            {
+                var pair = pairs[i];
+                if (string.IsNullOrWhiteSpace(pair))
+                    continue;
+
+                var equalsIndex = pair.IndexOf('=');
+                if (equalsIndex <= 0)
+                    continue;
+
+                var key = DecodeQueryPart(pair.Substring(0, equalsIndex));
+                if (!IsLanguageQueryKey(key))
+                    continue;
+
+                var value = DecodeQueryPart(pair.Substring(equalsIndex + 1));
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value;
+            }
+
+            return null;
+        }
+
+        private static bool IsLanguageQueryKey(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                return false;
+
+            for (int i = 0; i < LanguageQueryKeys.Length; i++)
+            {
+                if (string.Equals(key, LanguageQueryKeys[i], StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static string DecodeQueryPart(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return value;
+
+            return Uri.UnescapeDataString(value.Replace("+", " "));
         }
 
         private static void MarkReady(bool success)
