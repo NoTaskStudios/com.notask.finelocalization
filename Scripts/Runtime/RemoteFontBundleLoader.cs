@@ -313,14 +313,40 @@ namespace FineLocalization.Scripts.Runtime
 
             if (fontAsset == null)
             {
+                // Log all asset names inside the bundle to help diagnose the name mismatch.
+                var allNames = bundle.GetAllAssetNames();
                 FineLocalizationLogger.LogWarning(
-                    () => $"[RemoteFontBundleLoader] TMP_FontAsset '{config.fontAssetName}' não encontrado no bundle."
+                    () => $"[RemoteFontBundleLoader] TMP_FontAsset '{config.fontAssetName}' não encontrado no bundle. " +
+                          $"Assets disponíveis no bundle ({allNames.Length}): {string.Join(", ", allNames)}"
                 );
 
-                bundle.Unload(false);
-                _loadingLanguages.Remove(prefix);
-                onComplete?.Invoke(false);
-                yield break;
+                // Fallback: try to load the first TMP_FontAsset available in the bundle,
+                // regardless of the configured name.
+                var fallbackRequest = bundle.LoadAllAssetsAsync<TMP_FontAsset>();
+                yield return fallbackRequest;
+
+                if (fallbackRequest.allAssets != null && fallbackRequest.allAssets.Length > 0)
+                {
+                    fontAsset = fallbackRequest.allAssets[0] as TMP_FontAsset;
+                    if (fontAsset != null)
+                    {
+                        FineLocalizationLogger.Log(
+                            () => $"[RemoteFontBundleLoader] Fallback: usando TMP_FontAsset '{fontAsset.name}' do bundle. " +
+                                  $"Corrija 'fontAssetName' no Inspector para '{fontAsset.name}'."
+                        );
+                    }
+                }
+
+                if (fontAsset == null)
+                {
+                    FineLocalizationLogger.LogWarning(
+                        () => $"[RemoteFontBundleLoader] Nenhum TMP_FontAsset encontrado no bundle para '{language}'."
+                    );
+                    bundle.Unload(false);
+                    _loadingLanguages.Remove(prefix);
+                    onComplete?.Invoke(false);
+                    yield break;
+                }
             }
 
             FineLocalizationLogger.Log(
