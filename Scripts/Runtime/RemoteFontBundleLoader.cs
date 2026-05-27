@@ -64,6 +64,7 @@ namespace FineLocalization.Scripts.Runtime
 
         [Tooltip("Força o download do bundle para esses prefixos mesmo que sejam Latin. Use se sua fonte padrão é minimalista e não cobre acentos. Ex: 'tr', 'vi'.")]
         [SerializeField] private List<string> forceRemoteFontPrefixes = new();
+        private readonly HashSet<TMP_FontAsset> _fontValidationBuffer = new();
 
         [Header("Manual Test")]
         [Tooltip("Idioma usado pelo menu de contexto de teste no Inspector.")]
@@ -438,10 +439,8 @@ namespace FineLocalization.Scripts.Runtime
         /// </summary>
         private IEnumerator RebuildSceneTexts()
         {
-            yield return null; // wait one frame so SetText calls have all settled
+            yield return null;
 
-            // Re-ensure materials are valid — Unity's asset GC may have collected the
-            // runtime materials created in EnsureFontMaterial between load and rebuild.
             foreach (var fa in _runtimeFontAssets.Values)
                 EnsureFontMaterial(fa);
 
@@ -451,6 +450,7 @@ namespace FineLocalization.Scripts.Runtime
 #else
             var texts = UnityEngine.Object.FindObjectsOfType<TMP_Text>(true);
 #endif
+
             FineLocalizationLogger.Log(
                 () => $"[RemoteFontBundleLoader] RebuildSceneTexts: forçando rebuild em {texts.Length} TMP_Text(s)."
             );
@@ -458,10 +458,95 @@ namespace FineLocalization.Scripts.Runtime
             for (int i = 0; i < texts.Length; i++)
             {
                 var t = texts[i];
-                if (t == null || !t.gameObject.activeInHierarchy) continue;
-                t.SetAllDirty();
-                t.havePropertiesChanged = true;
-                t.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+                if (t == null || !t.gameObject.activeInHierarchy)
+                    continue;
+
+                if (!EnsureFontTreeMaterials(t.font))
+                {
+                    FineLocalizationLogger.LogWarning(
+                        () => $"[RemoteFontBundleLoader] Pulando rebuild de '{t.name}' porque a fonte '{t.font?.name ?? "NULL"}' está sem material válido."
+                    );
+                    continue;
+                }
+
+                try
+                {
+                    t.SetAllDirty();
+                    t.havePropertiesChanged = true;
+                    t.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+                }
+                catch (UnassignedReferenceException ex)
+                {
+                    FineLocalizationLogger.LogWarning(
+                        () => $"[RemoteFontBundleLoader] Falha ao rebuildar TMP_Text '{t.name}' com fonte '{t.font?.name ?? "NULL"}'. Erro: {ex.Message}"
+                    );
+                }
+            }
+        }
+
+        private bool EnsureFontTreeMaterials(TMP_FontAsset rootFont)
+        {
+            _fontValidationBuffer.Clear();
+            return EnsureFontTreeMaterialsInternal(rootFont);
+        }
+
+        private bool EnsureFontTreeMaterialsInternal(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+                return false;
+
+            if (!_fontValidationBuffer.Add(fontAsset))
+                return true;
+
+            EnsureFontMaterial(fontAsset);
+
+            if (!HasValidMaterial(fontAsset))
+                return false;
+
+            var fallbacks = fontAsset.fallbackFontAssetTable;
+            if (fallbacks == null)
+                return true;
+
+            for (int i = fallbacks.Count - 1; i >= 0; i--)
+            {
+                var fallback = fallbacks[i];
+
+                if (fallback == null)
+                {
+                    fallbacks.RemoveAt(i);
+                    continue;
+                }
+
+                EnsureFontMaterial(fallback);
+
+                if (!HasValidMaterial(fallback))
+                {
+                    FineLocalizationLogger.LogWarning(
+                        () => $"[RemoteFontBundleLoader] Removendo fallback '{fallback.name}' de '{fontAsset.name}' porque está sem material válido."
+                    );
+
+                    fallbacks.RemoveAt(i);
+                    continue;
+                }
+
+                EnsureFontTreeMaterialsInternal(fallback);
+            }
+
+            return true;
+        }
+
+        private static bool HasValidMaterial(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+                return false;
+
+            try
+            {
+                return fontAsset.material != null;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -479,25 +564,43 @@ namespace FineLocalization.Scripts.Runtime
         {
             yield return null;
 
-            // Re-ensure material is valid before rebuilding (GC safety).
             EnsureFontMaterial(fontAsset);
 
-            // 1) Register fallback on font assets ---------------------------------------
+            if (!HasValidMaterial(fontAsset))
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[RemoteFontBundleLoader] ApplyFallback cancelado: fonte remota '{fontAsset?.name ?? "NULL"}' está sem material."
+                );
+                yield break;
+            }
+
             _seenFontsBuffer.Clear();
 
-            // 1a) All loaded TMP_FontAsset instances (covers prefabs / addressables that
-            //     are loaded but not yet instantiated — fixes "popup with missing glyphs").
             if (addToAllLoadedFonts)
             {
                 var allFonts = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
+
                 FineLocalizationLogger.Log(
-                    () => $"[RemoteFontBundleLoader] ApplyFallback: addToAllLoadedFonts=true | " +
-                          $"TMP_FontAssets em memória: {allFonts.Length}"
+                    () => $"[RemoteFontBundleLoader] ApplyFallback: addToAllLoadedFonts=true | TMP_FontAssets em memória: {allFonts.Length}"
                 );
+
                 for (int i = 0; i < allFonts.Length; i++)
                 {
                     var f = allFonts[i];
-                    if (f == null || f == fontAsset) continue;
+
+                    if (f == null || f == fontAsset)
+                        continue;
+
+                    EnsureFontMaterial(f);
+
+                    if (!HasValidMaterial(f))
+                    {
+                        FineLocalizationLogger.LogWarning(
+                            () => $"[RemoteFontBundleLoader] Ignorando fonte '{f.name}' porque ela está sem material."
+                        );
+                        continue;
+                    }
+
                     if (_seenFontsBuffer.Add(f))
                         AddFallbackToFont(f, fontAsset);
                 }
@@ -510,14 +613,24 @@ namespace FineLocalization.Scripts.Runtime
             var texts = UnityEngine.Object.FindObjectsOfType<TMP_Text>(true);
 #endif
 
-            // 1b) Scene text fonts — also covered if addToAllLoadedFonts ran above
-            //     (the HashSet dedupes), but kept here for cases where the master toggle is off.
             if (addToActiveTextFonts)
             {
                 for (int i = 0; i < texts.Length; i++)
                 {
                     var t = texts[i];
-                    if (t == null || t.font == null) continue;
+                    if (t == null || t.font == null)
+                        continue;
+
+                    EnsureFontMaterial(t.font);
+
+                    if (!HasValidMaterial(t.font))
+                    {
+                        FineLocalizationLogger.LogWarning(
+                            () => $"[RemoteFontBundleLoader] Fonte do texto '{t.name}' está sem material: '{t.font.name}'."
+                        );
+                        continue;
+                    }
+
                     if (_seenFontsBuffer.Add(t.font))
                         AddFallbackToFont(t.font, fontAsset);
                 }
@@ -525,25 +638,40 @@ namespace FineLocalization.Scripts.Runtime
 
             _seenFontsBuffer.Clear();
 
-            // 2) Force rebuild of visible texts ---------------------------------------
             for (int i = 0; i < texts.Length; i++)
             {
                 var t = texts[i];
-                if (t == null || !t.gameObject.activeInHierarchy) continue;
 
-                t.SetAllDirty();
-                t.havePropertiesChanged = true;
-                t.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+                if (t == null || !t.gameObject.activeInHierarchy)
+                    continue;
+
+                if (!EnsureFontTreeMaterials(t.font))
+                    continue;
+
+                try
+                {
+                    t.SetAllDirty();
+                    t.havePropertiesChanged = true;
+                    t.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+                }
+                catch (UnassignedReferenceException ex)
+                {
+                    FineLocalizationLogger.LogWarning(
+                        () => $"[RemoteFontBundleLoader] Falha ao rebuildar '{t.name}'. Erro: {ex.Message}"
+                    );
+                }
             }
 
-            // 3) Optional aggressive pass --------------------------------------------
             if (aggressiveRebuild)
             {
                 yield return null;
+
                 for (int i = 0; i < texts.Length; i++)
                 {
                     var t = texts[i];
-                    if (t == null || !t.gameObject.activeInHierarchy) continue;
+                    if (t == null || !t.gameObject.activeInHierarchy)
+                        continue;
+
                     var go = t.gameObject;
                     go.SetActive(false);
                     go.SetActive(true);
@@ -787,10 +915,29 @@ namespace FineLocalization.Scripts.Runtime
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, fontAsset);
         }
 
-        private static void AddFallbackToFont(TMP_FontAsset targetFont, TMP_FontAsset fallbackFont)
+        private void AddFallbackToFont(TMP_FontAsset targetFont, TMP_FontAsset fallbackFont)
         {
             if (targetFont == null || fallbackFont == null || targetFont == fallbackFont)
                 return;
+
+            EnsureFontMaterial(targetFont);
+            EnsureFontMaterial(fallbackFont);
+
+            if (!HasValidMaterial(targetFont))
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[RemoteFontBundleLoader] AddFallbackToFont ignorado: targetFont '{targetFont.name}' está sem material."
+                );
+                return;
+            }
+
+            if (!HasValidMaterial(fallbackFont))
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[RemoteFontBundleLoader] AddFallbackToFont ignorado: fallbackFont '{fallbackFont.name}' está sem material."
+                );
+                return;
+            }
 
             targetFont.fallbackFontAssetTable ??= new List<TMP_FontAsset>();
 
@@ -803,9 +950,9 @@ namespace FineLocalization.Scripts.Runtime
             else
             {
                 targetFont.fallbackFontAssetTable.Add(fallbackFont);
+
                 FineLocalizationLogger.Log(
-                    () => $"[RemoteFontBundleLoader] AddFallbackToFont: ADICIONADO '{fallbackFont.name}' → '{targetFont.name}'. " +
-                          $"fallbackFontAssetTable.Count agora = {targetFont.fallbackFontAssetTable.Count}"
+                    () => $"[RemoteFontBundleLoader] AddFallbackToFont: ADICIONADO '{fallbackFont.name}' → '{targetFont.name}'. fallbackFontAssetTable.Count agora = {targetFont.fallbackFontAssetTable.Count}"
                 );
             }
 
