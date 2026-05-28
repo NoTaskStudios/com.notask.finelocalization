@@ -503,11 +503,14 @@ namespace FineLocalization.Scripts.Runtime
                     text.UpdateMeshPadding();
                     text.havePropertiesChanged = true;
                     text.ForceMeshUpdate(ignoreActiveState: false, forceTextReparsing: true);
+                    NormalizeTextFallbackMaterials(text);
                     if (ShouldLogTextGlyphDiagnostics(text, cjkDiagnostics))
                     {
                         LogTextGlyphDiagnostics(text);
                         cjkDiagnostics++;
                     }
+                    text.SetMaterialDirty();
+                    text.ForceMeshUpdate(ignoreActiveState: false, forceTextReparsing: false);
                     rebuilt++;
                 }
                 catch (Exception ex)
@@ -675,6 +678,87 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             return names.Count == 0 ? "<none>" : string.Join(", ", names);
+        }
+
+        private void NormalizeTextFallbackMaterials(TMP_Text text)
+        {
+            if (text == null)
+                return;
+
+            var remoteFont = GetFirstRuntimeFontAsset();
+            var remoteMaterial = remoteFont != null ? remoteFont.material : null;
+            var remoteAtlas = GetFontAtlasTexture(remoteFont);
+            if (remoteMaterial == null || remoteAtlas == null)
+                return;
+
+            try
+            {
+                var sharedMaterials = text.fontSharedMaterials;
+                if (sharedMaterials != null)
+                {
+                    for (int i = 0; i < sharedMaterials.Length; i++)
+                        NormalizeFallbackMaterial(sharedMaterials[i], remoteMaterial, remoteAtlas);
+                }
+            }
+            catch
+            {
+                // Some TMP versions can throw while rebuilding material arrays mid-frame.
+            }
+
+            if (text is TextMeshProUGUI uiText)
+            {
+                var subMeshes = uiText.GetComponentsInChildren<TMP_SubMeshUI>(true);
+                for (int i = 0; i < subMeshes.Length; i++)
+                {
+                    var subMesh = subMeshes[i];
+                    if (subMesh == null)
+                        continue;
+
+                    NormalizeFallbackMaterial(subMesh.sharedMaterial, remoteMaterial, remoteAtlas);
+                    NormalizeFallbackMaterial(GetCanvasRendererMaterial(subMesh.canvasRenderer), remoteMaterial, remoteAtlas);
+                }
+            }
+        }
+
+        private static void NormalizeFallbackMaterial(Material fallbackMaterial, Material remoteMaterial, Texture remoteAtlas)
+        {
+            if (fallbackMaterial == null || remoteMaterial == null || remoteAtlas == null)
+                return;
+
+            Texture mainTex = null;
+            try
+            {
+                mainTex = fallbackMaterial.GetTexture(ShaderUtilities.ID_MainTex);
+            }
+            catch
+            {
+                return;
+            }
+
+            if (mainTex != remoteAtlas)
+                return;
+
+            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_GradientScale");
+            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_TextureWidth");
+            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_TextureHeight");
+            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_ScaleX");
+            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_ScaleY");
+            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_PerspectiveFilter");
+            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_WeightNormal");
+            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_WeightBold");
+        }
+
+        private static void CopyMaterialFloatIfPresent(Material source, Material target, string propertyName)
+        {
+            try
+            {
+                if (source.HasProperty(propertyName) && target.HasProperty(propertyName))
+                    target.SetFloat(propertyName, source.GetFloat(propertyName));
+            }
+            catch
+            {
+                // Ignore unsupported shader properties across TMP versions.
+            }
         }
 
         private static string GetTextMaterialDiagnostics(TMP_Text text)
@@ -1517,9 +1601,7 @@ namespace FineLocalization.Scripts.Runtime
                 return "NULL";
 
             var mat = font.material;
-            var atlas = font.atlasTexture;
-            if (atlas == null && font.atlasTextures != null && font.atlasTextures.Length > 0)
-                atlas = font.atlasTextures[0];
+            var atlas = GetFontAtlasTexture(font);
 
             string mainTexName = "NULL";
             if (mat != null)
@@ -1536,6 +1618,18 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             return $"{font.name} | mat={(mat != null ? mat.name : "NULL")} | atlas={(atlas != null ? atlas.name : "NULL")} | mainTex={mainTexName} | chars={font.characterTable?.Count ?? 0}";
+        }
+
+        private static Texture GetFontAtlasTexture(TMP_FontAsset font)
+        {
+            if (font == null)
+                return null;
+
+            var atlas = font.atlasTexture;
+            if (atlas == null && font.atlasTextures != null && font.atlasTextures.Length > 0)
+                atlas = font.atlasTextures[0];
+
+            return atlas;
         }
     }
 }
