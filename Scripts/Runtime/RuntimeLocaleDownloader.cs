@@ -42,6 +42,9 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Tempo máximo de espera por SetRequestedLanguage. Use 0 para aguardar indefinidamente.")]
         [SerializeField] private float requestedLanguageWaitTimeoutSeconds = 0f;
 
+        [Tooltip("Compatibilidade: quando o jogo troca LocalizationManager.Language diretamente, usa esse idioma como requested language e libera o download.")]
+        [SerializeField] private bool acceptLocalizationManagerLanguageAsRequested = true;
+
         private static string PersistentCsvDir =>
             Path.Combine(Application.persistentDataPath, "FineLocalization/Resources/Localization");
 
@@ -117,11 +120,13 @@ namespace FineLocalization.Scripts.Runtime
         private void OnEnable()
         {
             OnRequestedLanguageChanged += HandleRequestedLanguageChanged;
+            LocalizationManager.OnLocalizationChanged += HandleLocalizationLanguageChanged;
         }
 
         private void OnDisable()
         {
             OnRequestedLanguageChanged -= HandleRequestedLanguageChanged;
+            LocalizationManager.OnLocalizationChanged -= HandleLocalizationLanguageChanged;
         }
 
         private void Start()
@@ -145,6 +150,21 @@ namespace FineLocalization.Scripts.Runtime
                 return;
 
             StartDownloadIfNeeded();
+        }
+
+        private void HandleLocalizationLanguageChanged()
+        {
+            if (!acceptLocalizationManagerLanguageAsRequested || HasExplicitRequestedLanguage)
+                return;
+
+            var language = NormalizeLanguageCandidate(LocalizationManager.Language);
+            if (string.IsNullOrWhiteSpace(language))
+                return;
+
+            RequestedLanguage = language;
+            HasExplicitRequestedLanguage = true;
+            FineLocalizationLogger.Log(() => $"[FineLocalization] Requested runtime language from LocalizationManager.Language: '{RequestedLanguage}'.");
+            OnRequestedLanguageChanged();
         }
 
         private void StartDownloadIfNeeded()
@@ -465,6 +485,9 @@ namespace FineLocalization.Scripts.Runtime
             if (string.IsNullOrWhiteSpace(requestedLanguage))
                 requestedLanguage = TryResolveLanguageFromLaunchUrl();
 
+            if (string.IsNullOrWhiteSpace(requestedLanguage) && acceptLocalizationManagerLanguageAsRequested)
+                requestedLanguage = LocalizationManager.Language;
+
             return NormalizeLanguageCandidate(requestedLanguage);
         }
 
@@ -475,7 +498,8 @@ namespace FineLocalization.Scripts.Runtime
 
             if (HasExplicitRequestedLanguage ||
                 !string.IsNullOrWhiteSpace(initialLanguageOverride) ||
-                !string.IsNullOrWhiteSpace(TryResolveLanguageFromLaunchUrl()))
+                !string.IsNullOrWhiteSpace(TryResolveLanguageFromLaunchUrl()) ||
+                (acceptLocalizationManagerLanguageAsRequested && !string.IsNullOrWhiteSpace(LocalizationManager.Language)))
             {
                 yield break;
             }
