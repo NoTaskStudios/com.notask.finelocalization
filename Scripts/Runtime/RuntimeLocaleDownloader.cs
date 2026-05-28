@@ -170,7 +170,7 @@ namespace FineLocalization.Scripts.Runtime
                 return;
 
             var language = NormalizeLanguageCandidate(LocalizationManager.Language);
-            if (!IsNonDefaultLanguage(language))
+            if (string.IsNullOrWhiteSpace(language))
                 return;
 
             RequestedLanguage = language;
@@ -498,12 +498,8 @@ namespace FineLocalization.Scripts.Runtime
             if (string.IsNullOrWhiteSpace(requestedLanguage))
                 requestedLanguage = TryResolveLanguageFromLaunchUrl();
 
-            if (string.IsNullOrWhiteSpace(requestedLanguage) &&
-                acceptLocalizationManagerLanguageAsRequested &&
-                IsNonDefaultLanguage(LocalizationManager.Language))
-            {
+            if (string.IsNullOrWhiteSpace(requestedLanguage) && acceptLocalizationManagerLanguageAsRequested)
                 requestedLanguage = LocalizationManager.Language;
-            }
 
             return NormalizeLanguageCandidate(requestedLanguage);
         }
@@ -516,7 +512,7 @@ namespace FineLocalization.Scripts.Runtime
             if (HasExplicitRequestedLanguage ||
                 !string.IsNullOrWhiteSpace(initialLanguageOverride) ||
                 !string.IsNullOrWhiteSpace(TryResolveLanguageFromLaunchUrl()) ||
-                (acceptLocalizationManagerLanguageAsRequested && IsNonDefaultLanguage(LocalizationManager.Language)))
+                (acceptLocalizationManagerLanguageAsRequested && !string.IsNullOrWhiteSpace(LocalizationManager.Language)))
             {
                 yield break;
             }
@@ -541,13 +537,6 @@ namespace FineLocalization.Scripts.Runtime
             return string.IsNullOrWhiteSpace(language)
                 ? string.Empty
                 : language.Trim().Trim('\uFEFF').Replace('_', '-').ToLowerInvariant();
-        }
-
-        private static bool IsNonDefaultLanguage(string language)
-        {
-            var normalized = NormalizeLanguageCandidate(language);
-            return !string.IsNullOrWhiteSpace(normalized) &&
-                   !string.Equals(normalized, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string TryResolveLanguageFromLaunchUrl()
