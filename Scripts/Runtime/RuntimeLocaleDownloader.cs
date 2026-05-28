@@ -53,8 +53,31 @@ namespace FineLocalization.Scripts.Runtime
             "lang", "language", "locale", "culture", "lng"
         };
 
-        public static event Action<bool> OnDownloadLocalizationComplete = _ => { };
-        public static event Action<bool> OnAllSheetsDownloadedComplete = _ => { };
+        private static Action<bool> _onDownloadLocalizationComplete = _ => { };
+        private static Action<bool> _onAllSheetsDownloadedComplete = _ => { };
+
+        public static event Action<bool> OnDownloadLocalizationComplete
+        {
+            add
+            {
+                _onDownloadLocalizationComplete += value;
+                if (IsLocalizationReady)
+                    value?.Invoke(LastLocalizationSucceeded);
+            }
+            remove => _onDownloadLocalizationComplete -= value;
+        }
+
+        public static event Action<bool> OnAllSheetsDownloadedComplete
+        {
+            add
+            {
+                _onAllSheetsDownloadedComplete += value;
+                if (IsLocalizationReady)
+                    value?.Invoke(LastLocalizationSucceeded);
+            }
+            remove => _onAllSheetsDownloadedComplete -= value;
+        }
+
         private static event Action OnRequestedLanguageChanged = () => { };
 
         /// <summary>
@@ -555,8 +578,8 @@ namespace FineLocalization.Scripts.Runtime
             _downloadCompleted = true;
             _activeRequestedLanguage = null;
             _preloadedRemoteFontLanguage = null;
-            OnDownloadLocalizationComplete?.Invoke(success);
-            OnAllSheetsDownloadedComplete?.Invoke(success);
+            _onDownloadLocalizationComplete?.Invoke(success);
+            _onAllSheetsDownloadedComplete?.Invoke(success);
         }
 
         private string BuildCsvUrl(string tableId, long sheetId)
