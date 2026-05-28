@@ -1381,6 +1381,10 @@ namespace FineLocalization.Scripts.Runtime
             material.SetTexture(ShaderUtilities.ID_MainTex, atlasTexture);
             material.hideFlags |= HideFlags.DontUnloadUnusedAsset;
 
+            // Overwrite the SDF decode parameters with this font's atlas metrics so the
+            // cloned material (from a different font) does not carry the wrong GradientScale.
+            ApplyFontAtlasSdfMetrics(material, fontAsset);
+
             _runtimeMaterials.Add(material);
             fontAsset.material = material;
 
@@ -1403,6 +1407,13 @@ namespace FineLocalization.Scripts.Runtime
             material.SetTexture(ShaderUtilities.ID_MainTex, atlasTexture);
             material.hideFlags |= HideFlags.DontUnloadUnusedAsset;
 
+            // Override the SDF decode parameters with the values from THIS font's atlas.
+            // Cloning from a local font (e.g. Righteous-Regular) copies that font's padding
+            // and atlas dimensions, which are almost certainly different from the remote CJK atlas.
+            // _GradientScale = atlasPadding + 1 matches the formula TMP uses when it bakes
+            // a font atlas, so glyphs decode at the exact SDF threshold they were encoded with.
+            ApplyFontAtlasSdfMetrics(material, fontAsset);
+
             _runtimeMaterials.Add(material);
             ClearTMPFallbackMaterialCache();
 
@@ -1411,6 +1422,49 @@ namespace FineLocalization.Scripts.Runtime
             );
 
             return material;
+        }
+
+        /// <summary>
+        /// Overwrites the SDF decode uniforms in <paramref name="material"/> with the metrics
+        /// derived from <paramref name="fontAsset"/>'s atlas, so the SDF threshold used at
+        /// render time matches the one used when the atlas was baked.
+        ///
+        /// Key uniforms:
+        ///   _GradientScale  = atlasPadding + 1   (SDF search radius in texels)
+        ///   _TextureWidth   = atlas pixel width
+        ///   _TextureHeight  = atlas pixel height
+        /// </summary>
+        private static void ApplyFontAtlasSdfMetrics(Material material, TMP_FontAsset fontAsset)
+        {
+            if (material == null || fontAsset == null)
+                return;
+
+            try
+            {
+                int w = fontAsset.atlasWidth;
+                int h = fontAsset.atlasHeight;
+                int padding = fontAsset.atlasPadding;
+
+                if (w > 0)
+                    material.SetFloat(ShaderUtilities.ID_TextureWidth, w);
+
+                if (h > 0)
+                    material.SetFloat(ShaderUtilities.ID_TextureHeight, h);
+
+                if (padding >= 0)
+                    material.SetFloat(ShaderUtilities.ID_GradientScale, padding + 1);
+
+                FineLocalizationLogger.Log(
+                    () => $"[RemoteFontBundleLoader] SDF metrics para '{fontAsset.name}': " +
+                          $"atlas={w}x{h} padding={padding} gradientScale={padding + 1}"
+                );
+            }
+            catch (Exception ex)
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[RemoteFontBundleLoader] Falha ao aplicar SDF metrics para '{fontAsset.name}': {ex.Message}"
+                );
+            }
         }
 
         private static void TryReadFontAssetDefinition(TMP_FontAsset fontAsset)
