@@ -103,6 +103,18 @@ namespace FineLocalization.Scripts.Runtime
         public static string RequestedLanguage { get; private set; }
         public static bool HasExplicitRequestedLanguage { get; private set; }
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            _onDownloadLocalizationComplete = _ => { };
+            _onAllSheetsDownloadedComplete = _ => { };
+            OnRequestedLanguageChanged = () => { };
+            IsLocalizationReady = false;
+            LastLocalizationSucceeded = false;
+            RequestedLanguage = null;
+            HasExplicitRequestedLanguage = false;
+        }
+
         public static void SetRequestedLanguage(string language)
         {
             RequestedLanguage = NormalizeLanguageCandidate(language);

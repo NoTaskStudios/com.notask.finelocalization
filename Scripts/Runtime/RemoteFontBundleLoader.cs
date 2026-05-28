@@ -134,6 +134,31 @@ namespace FineLocalization.Scripts.Runtime
         public static bool LastRemoteFontSucceeded { get; private set; }
         public static string LastRemoteFontLanguage { get; private set; }
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            OnDownloadRemoteFontComplete = _ => { };
+            OnRemoteFontDownloadComplete = (_, _) => { };
+            IsRemoteFontReady = false;
+            LastRemoteFontSucceeded = false;
+            LastRemoteFontLanguage = null;
+            ClearTMPFallbackMaterialCache();
+        }
+
+#if UNITY_EDITOR
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void RemoveEditorFallbacksFromPreviousPlay()
+        {
+            RemoveUnusableFallbackEntries(TMP_Settings.fallbackFontAssets);
+
+            var fonts = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
+            for (int i = 0; i < fonts.Length; i++)
+                RemoveUnusableFallbackEntries(fonts[i]?.fallbackFontAssetTable);
+
+            ClearTMPFallbackMaterialCache();
+        }
+#endif
+
         private void OnEnable()
         {
             if (loadOnLocalizationChanged)
@@ -1160,6 +1185,19 @@ namespace FineLocalization.Scripts.Runtime
                 }
 
                 if (preferredFallback != null && item != preferredFallback && IsSameRemoteFontFamily(item, preferredFallback))
+                    list.RemoveAt(i);
+            }
+        }
+
+        private static void RemoveUnusableFallbackEntries(List<TMP_FontAsset> list)
+        {
+            if (list == null)
+                return;
+
+            for (int i = list.Count - 1; i >= 0; i--)
+            {
+                var item = list[i];
+                if (item == null || !IsUsableFontAsset(item))
                     list.RemoveAt(i);
             }
         }
