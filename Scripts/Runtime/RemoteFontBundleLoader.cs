@@ -73,6 +73,9 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Para fontes vindas de AssetBundle, cria o material em runtime usando um material TMP local como template e o atlas remoto. Ajuda em WebGL quando o material do bundle nao desenha.")]
         [SerializeField] private bool createRuntimeMaterialForBundleFonts = true;
 
+        [Tooltip("Desativa o matching de material preset do TMP quando fonte remota for usada como fallback. Evita MissingReferenceException em TMP_MaterialManager.GetFallbackMaterial no TMP 3.x.")]
+        [SerializeField] private bool disableMaterialPresetMatchingForRemoteFonts = true;
+
         [Header("Safety Filters")]
         [Tooltip("Ignora fontes cujo nome contenha estes termos. Útil para evitar NotoSansJP antigo local quando o bundle usa NotoSansJP-used.")]
         [SerializeField] private List<string> ignoredFontNameContains = new() { "NotoSansJP" };
@@ -280,7 +283,10 @@ namespace FineLocalization.Scripts.Runtime
                 FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Fonte de '{prefix}' já carregada. Reaplicando fallback e rebuild leve.");
 
                 if (_runtimeFontAssets.TryGetValue(prefix, out var alreadyLoadedFont) && IsUsableFontAsset(alreadyLoadedFont))
+                {
+                    DisableTMPMaterialPresetMatchingForRemoteFont();
                     yield return StartCoroutine(ApplyFallbackToTargetsAndRebuild(alreadyLoadedFont));
+                }
                 else
                     FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Fonte em cache para '{prefix}' está inválida. Reinicie o loader ou recarregue a cena.");
 
@@ -372,6 +378,7 @@ namespace FineLocalization.Scripts.Runtime
                 FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] TMP_FontAsset encontrado como '{fontAsset.name}', mas o configurado é '{config.fontAssetName}'.");
             }
 
+            DisableTMPMaterialPresetMatchingForRemoteFont();
             RepairFontMaterial(fontAsset, bundleMaterial);
             TryReadFontAssetDefinition(fontAsset);
             SanitizeFallbackTree(fontAsset, fontAsset);
@@ -421,6 +428,32 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             onComplete?.Invoke(success);
+        }
+
+        private void DisableTMPMaterialPresetMatchingForRemoteFont()
+        {
+            if (!disableMaterialPresetMatchingForRemoteFonts || !TMP_Settings.matchMaterialPreset)
+                return;
+
+            try
+            {
+                var settings = TMP_Settings.instance;
+                var field = typeof(TMP_Settings).GetField("m_matchMaterialPreset", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (settings == null || field == null)
+                {
+                    FineLocalizationLogger.LogWarning("[RemoteFontBundleLoader] Não foi possível localizar TMP_Settings.m_matchMaterialPreset.");
+                    return;
+                }
+
+                field.SetValue(settings, false);
+
+                if (!TMP_Settings.matchMaterialPreset)
+                    FineLocalizationLogger.Log("[RemoteFontBundleLoader] TMP_Settings.matchMaterialPreset desativado para fallbacks de fonte remota.");
+            }
+            catch (Exception ex)
+            {
+                FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Falha ao desativar TMP matchMaterialPreset: {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         private void KeepRuntimeBundleAssetsAlive(UnityEngine.Object[] assets)
