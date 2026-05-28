@@ -629,7 +629,6 @@ namespace FineLocalization.Scripts.Runtime
             if (!targetFont.fallbackFontAssetTable.Contains(fallbackFont))
             {
                 targetFont.fallbackFontAssetTable.Insert(0, fallbackFont);
-                FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Fallback adicionado: '{fallbackFont.name}' -> '{targetFont.name}' ({source}).");
             }
 
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, targetFont);
@@ -1485,11 +1484,6 @@ namespace FineLocalization.Scripts.Runtime
 
                 if (padding >= 0)
                     SetMaterialFloatIfPresent(material, "_GradientScale", padding + 1);
-
-                FineLocalizationLogger.Log(
-                    () => $"[RemoteFontBundleLoader] SDF metrics for '{fontAsset.name}': " +
-                          $"atlas={w}x{h} padding={padding} gradientScale={padding + 1}"
-                );
             }
             catch (Exception ex)
             {
