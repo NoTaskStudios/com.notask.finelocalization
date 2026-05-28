@@ -40,6 +40,23 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Extensão adicionada depois do prefixo quando usar a URL base. Ex: .ft")]
         [SerializeField] private string bundleFileExtension = ".ft";
 
+        [Header("Bundle Cache / Versioning")]
+        [Tooltip("Versão adicionada na URL como ?v=. Use ao reenviar um bundle novo com o mesmo nome, para evitar cache antigo no WebGL/CDN.")]
+        [SerializeField] private string bundleVersion = "";
+
+        [Tooltip("Se bundleVersion estiver vazio, usa Application.version como cache-bust estável. Não usa timestamp para não baixar a cada refresh.")]
+        [SerializeField] private bool useApplicationVersionAsBundleVersion = true;
+
+        [Header("Required Glyph Validation")]
+        [Tooltip("Valida glyphs críticos em fontes japonesas. Se estiver faltando, o problema é bundle/font asset antigo ou gerado com TXT errado.")]
+        [SerializeField] private bool validateJapaneseCriticalGlyphs = true;
+
+        [Tooltip("Glyphs mínimos que o bundle japonês precisa conter. U+65AD = 断.")]
+        [SerializeField] private string japaneseCriticalGlyphs = "断接続切終了エラー";
+
+        [Tooltip("Se marcado, não registra a fonte remota quando glyphs críticos estiverem ausentes. Evita falso sucesso com bundle antigo.")]
+        [SerializeField] private bool failWhenCriticalGlyphsMissing = true;
+
         [SerializeField] private List<RemoteFontBundleConfig> bundles = new();
 
         [Header("Fallback Target")]
@@ -400,6 +417,23 @@ namespace FineLocalization.Scripts.Runtime
             RepairFontMaterial(fontAsset, bundleMaterial);
             TryReadFontAssetDefinition(fontAsset);
             SanitizeFallbackTree(fontAsset, fontAsset);
+
+            if (!ValidateRequiredGlyphsForLanguage(prefix, fontAsset, out var missingGlyphs))
+            {
+                FineLocalizationLogger.LogWarning(() =>
+                    $"[RemoteFontBundleLoader] Fonte '{fontAsset.name}' não contém glyphs críticos para '{prefix}': {missingGlyphs}. " +
+                    "Isto geralmente indica que o AssetBundle está antigo, o FontAsset foi gerado com TXT errado, " +
+                    "ou a URL/CDN/WebGL ainda está servindo cache antigo."
+                );
+
+                if (failWhenCriticalGlyphsMissing)
+                {
+                    bundle.Unload(false);
+                    _loadingLanguages.Remove(prefix);
+                    CompleteFontDownload(normalizedLanguage, false, onComplete, true);
+                    yield break;
+                }
+            }
 
             if (!IsUsableFontAsset(fontAsset))
             {
@@ -1809,13 +1843,67 @@ namespace FineLocalization.Scripts.Runtime
 
         private string GetBundleUrl(RemoteFontBundleConfig config, string prefix)
         {
-            if (!string.IsNullOrWhiteSpace(config.bundleUrlOverride))
-                return config.bundleUrlOverride.Trim();
+            string url;
 
-            if (string.IsNullOrWhiteSpace(baseBundleUrl))
+            if (!string.IsNullOrWhiteSpace(config.bundleUrlOverride))
+                url = config.bundleUrlOverride.Trim();
+            else if (!string.IsNullOrWhiteSpace(baseBundleUrl))
+                url = CombineBundleUrl(baseBundleUrl, "font_" + prefix + bundleFileExtension);
+            else
                 return string.Empty;
 
-            return CombineBundleUrl(baseBundleUrl, "font_" + prefix + bundleFileExtension);
+            return AppendBundleVersionQuery(url);
+        }
+
+        private string AppendBundleVersionQuery(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return string.Empty;
+
+            var version = !string.IsNullOrWhiteSpace(bundleVersion)
+                ? bundleVersion.Trim()
+                : useApplicationVersionAsBundleVersion
+                    ? Application.version
+                    : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(version))
+                return url;
+
+            var separator = url.Contains("?") ? "&" : "?";
+            return url + separator + "v=" + UnityWebRequest.EscapeURL(version);
+        }
+
+        private bool ValidateRequiredGlyphsForLanguage(string prefix, TMP_FontAsset fontAsset, out string missingGlyphs)
+        {
+            missingGlyphs = string.Empty;
+
+            if (!validateJapaneseCriticalGlyphs || fontAsset == null)
+                return true;
+
+            var root = GetRootLanguagePrefix(prefix);
+            if (!string.Equals(root, "ja", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (string.IsNullOrEmpty(japaneseCriticalGlyphs))
+                return true;
+
+            var missing = new List<string>();
+            for (int i = 0; i < japaneseCriticalGlyphs.Length; i++)
+            {
+                var c = japaneseCriticalGlyphs[i];
+                if (char.IsControl(c) || char.IsWhiteSpace(c))
+                    continue;
+
+                if (fontAsset.HasCharacter(c))
+                    continue;
+
+                var token = $"{c}(U+{(int)c:X4})";
+                if (!missing.Contains(token))
+                    missing.Add(token);
+            }
+
+            missingGlyphs = missing.Count == 0 ? "<none>" : string.Join(", ", missing);
+            return missing.Count == 0;
         }
 
         private static string CombineBundleUrl(string baseUrl, string fileName)
