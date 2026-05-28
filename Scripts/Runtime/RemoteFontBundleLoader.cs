@@ -29,7 +29,7 @@ namespace FineLocalization.Scripts.Runtime
             [Tooltip("Opcional. Se vazio, usa Base Bundle Url + languagePrefix.")]
             public string bundleUrlOverride;
 
-            [Tooltip("Nome exato do TMP_FontAsset dentro do bundle. Ex: NotoSansJP-used")]
+            [Tooltip("Nome exato do TMP_FontAsset dentro do bundle. Ex: NotoSansJP")]
             public string fontAssetName;
         }
 
@@ -73,8 +73,25 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Para fontes vindas de AssetBundle, cria o material em runtime usando um material TMP local como template e o atlas remoto. Ajuda em WebGL quando o material do bundle nao desenha.")]
         [SerializeField] private bool createRuntimeMaterialForBundleFonts = true;
 
+        [Header("TMP Build Logs")]
+        [Tooltip("Desativa warnings internos do TextMeshPro apenas em build. No Editor continua mostrando para diagnóstico.")]
+        [SerializeField] private bool disableTmpWarningsInBuild = true;
+
+        [Header("Glyph Validation")]
+        [Tooltip("Caracteres mínimos que a fonte remota deve conter. Para japonês, フ valida Katakana U+30D5.")]
+        [SerializeField] private string requiredGlyphsForRemoteFont = "フアイウエオあいうえお。、ー";
+
+        [Tooltip("Se marcado, loga todos os caracteres ausentes de requiredGlyphsForRemoteFont depois de carregar o bundle.")]
+        [SerializeField] private bool validateRequiredGlyphs = true;
+
+        [Tooltip("Se marcado, cancela o uso da fonte remota quando algum requiredGlyphsForRemoteFont estiver ausente.")]
+        [SerializeField] private bool failWhenRequiredGlyphMissing = false;
+
+        [Tooltip("Lista todos os assets encontrados dentro do bundle. Útil para descobrir se o bundle antigo/errado foi baixado.")]
+        [SerializeField] private bool logBundleAssets = true;
+
         [Header("Safety Filters")]
-        [Tooltip("Ignora fontes cujo nome contenha estes termos. Útil para evitar NotoSansJP antigo local quando o bundle usa NotoSansJP-used.")]
+        [Tooltip("Ignora fontes cujo nome contenha estes termos. Útil para evitar fontes CJK antigas locais quando o bundle remoto deve ser a fonte válida.")]
         [SerializeField] private List<string> ignoredFontNameContains = new() { "NotoSansJP" };
 
         [Tooltip("Se marcado, não ignora a própria fonte remota mesmo que o nome bata com ignoredFontNameContains.")]
@@ -159,6 +176,14 @@ namespace FineLocalization.Scripts.Runtime
         }
 #endif
 
+        private void Awake()
+        {
+#if !UNITY_EDITOR
+            if (disableTmpWarningsInBuild)
+                TMP_Settings.warningsDisabled = true;
+#endif
+        }
+
         private void OnEnable()
         {
             if (loadOnLocalizationChanged)
@@ -207,7 +232,27 @@ namespace FineLocalization.Scripts.Runtime
             return FindObjectOfType<RuntimeLocaleDownloader>() != null;
 #endif
         }
+        private static void LogGlyphCheck(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+            {
+                Debug.LogWarning("[TMP Glyph Check] FontAsset null.");
+                return;
+            }
 
+            char c = 'フ';
+
+            bool hasSimple = fontAsset.HasCharacter(c);
+            bool hasSearchFallbacks = fontAsset.HasCharacter(c, true, true);
+
+            Debug.Log(
+                $"[TMP Glyph Check] Font='{fontAsset.name}' " +
+                $"Char='{c}' U+{(int)c:X4} " +
+                $"HasCharacter={hasSimple} " +
+                $"HasCharacterSearchFallbacks={hasSearchFallbacks} " +
+                $"Characters={fontAsset.characterTable?.Count ?? 0}"
+            );
+        }
         public void TestLanguage(string language)
         {
             StartCoroutine(EnsureFontForLanguage(language, success =>
@@ -368,11 +413,26 @@ namespace FineLocalization.Scripts.Runtime
             var allAssetsRequest = bundle.LoadAllAssetsAsync();
             yield return allAssetsRequest;
             loadedAssets = allAssetsRequest.allAssets;
+            if (logBundleAssets)
+                LogLoadedBundleAssets(loadedAssets);
             KeepRuntimeBundleAssetsAlive(loadedAssets);
 
             if (fontAsset == null)
             {
-                fontAsset = FindFontAssetFromLoadedAssets(loadedAssets, config.fontAssetName);
+                if (!string.IsNullOrWhiteSpace(config.fontAssetName))
+                {
+                    FineLocalizationLogger.LogWarning(
+                        () => $"[RemoteFontBundleLoader] FontAsset configurado '{config.fontAssetName}' não foi encontrado no bundle. " +
+                              $"Fontes disponíveis: {GetAvailableFontAssetNames(loadedAssets)}"
+                    );
+
+                    bundle.Unload(false);
+                    _loadingLanguages.Remove(prefix);
+                    CompleteFontDownload(normalizedLanguage, false, onComplete, true);
+                    yield break;
+                }
+
+                fontAsset = FindFontAssetFromLoadedAssets(loadedAssets, null);
             }
 
             bundleMaterial = FindBestMaterialFromLoadedAssets(loadedAssets, fontAsset);
@@ -400,6 +460,24 @@ namespace FineLocalization.Scripts.Runtime
             RepairFontMaterial(fontAsset, bundleMaterial);
             TryReadFontAssetDefinition(fontAsset);
             SanitizeFallbackTree(fontAsset, fontAsset);
+
+            LogGlyphCheck(fontAsset);
+
+            if (validateRequiredGlyphs && !ValidateRequiredGlyphs(fontAsset, requiredGlyphsForRemoteFont, out var missingRequiredGlyphs))
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[RemoteFontBundleLoader] Fonte '{fontAsset.name}' sem glyph obrigatório: {missingRequiredGlyphs}. " +
+                          "Regere o TMP Font Asset com TXT UTF-8 sem BOM e faça cache bust do bundle."
+                );
+
+                if (failWhenRequiredGlyphMissing)
+                {
+                    bundle.Unload(false);
+                    _loadingLanguages.Remove(prefix);
+                    CompleteFontDownload(normalizedLanguage, false, onComplete, true);
+                    yield break;
+                }
+            }
 
             if (!IsUsableFontAsset(fontAsset))
             {
@@ -446,6 +524,79 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             onComplete?.Invoke(success);
+        }
+
+        private void LogLoadedBundleAssets(UnityEngine.Object[] assets)
+        {
+            if (assets == null)
+            {
+                FineLocalizationLogger.Log("[RemoteFontBundleLoader] Bundle assets: null");
+                return;
+            }
+
+            for (int i = 0; i < assets.Length; i++)
+            {
+                var asset = assets[i];
+                if (asset == null)
+                    continue;
+
+                if (asset is TMP_FontAsset font)
+                {
+                    FineLocalizationLogger.Log(
+                        () => $"[RemoteFontBundleLoader] Asset[{i}] TMP_FontAsset name='{font.name}' " +
+                              $"chars={font.characterTable?.Count ?? 0} " +
+                              $"has フ={font.HasCharacter('フ')}"
+                    );
+                }
+                else
+                {
+                    FineLocalizationLogger.Log(
+                        () => $"[RemoteFontBundleLoader] Asset[{i}] {asset.GetType().Name} name='{asset.name}'"
+                    );
+                }
+            }
+        }
+
+        private static string GetAvailableFontAssetNames(UnityEngine.Object[] assets)
+        {
+            if (assets == null || assets.Length == 0)
+                return "<none>";
+
+            var names = new List<string>();
+            for (int i = 0; i < assets.Length; i++)
+            {
+                if (assets[i] is TMP_FontAsset font)
+                    names.Add($"{font.name} chars={font.characterTable?.Count ?? 0} hasフ={font.HasCharacter('フ')}");
+            }
+
+            return names.Count == 0 ? "<none>" : string.Join(", ", names);
+        }
+
+        private static bool ValidateRequiredGlyphs(TMP_FontAsset fontAsset, string requiredGlyphs, out string missingGlyphs)
+        {
+            missingGlyphs = "<none>";
+
+            if (fontAsset == null || string.IsNullOrEmpty(requiredGlyphs))
+                return true;
+
+            var missing = new List<string>();
+            var seen = new HashSet<char>();
+
+            for (int i = 0; i < requiredGlyphs.Length; i++)
+            {
+                var c = requiredGlyphs[i];
+                if (char.IsControl(c) || !seen.Add(c))
+                    continue;
+
+                if (!fontAsset.HasCharacter(c))
+                    missing.Add($"{c}(U+{(int)c:X4})");
+            }
+
+            if (missing.Count == 0)
+                return true;
+
+            missingGlyphs = string.Join(", ", missing);
+            return false;
         }
 
         private void KeepRuntimeBundleAssetsAlive(UnityEngine.Object[] assets)
@@ -658,6 +809,7 @@ namespace FineLocalization.Scripts.Runtime
 
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, targetFont);
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, fallbackFont);
+            ClearTMPFallbackMaterialCache();
             return true;
         }
 
@@ -1012,6 +1164,7 @@ namespace FineLocalization.Scripts.Runtime
             RemoveRemoteFallbacksForOtherLanguages(fontAsset);
 
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, fontAsset);
+            ClearTMPFallbackMaterialCache();
         }
 
         private void RemoveRemoteFallbacksForOtherLanguages(TMP_FontAsset preferredFallback)
