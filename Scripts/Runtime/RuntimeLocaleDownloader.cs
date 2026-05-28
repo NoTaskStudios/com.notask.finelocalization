@@ -175,8 +175,6 @@ namespace FineLocalization.Scripts.Runtime
                 yield break;
             }
 
-            yield return PreloadRemoteFontOrFallbackToDefault(_activeRequestedLanguage, language => _activeRequestedLanguage = language);
-
             if (ShouldUseBundledCsvs())
             {
                 yield return UseBundledCsvs();
@@ -276,8 +274,6 @@ namespace FineLocalization.Scripts.Runtime
                 yield break;
             }
 
-            yield return PreloadRemoteFontOrFallbackToDefault(_activeRequestedLanguage, language => _activeRequestedLanguage = language);
-
             var targetLanguage = _activeRequestedLanguage;
             if (string.IsNullOrWhiteSpace(targetLanguage))
             {
@@ -297,9 +293,9 @@ namespace FineLocalization.Scripts.Runtime
             var shouldLoadRemoteFont = needsRemoteFont && !IsRemoteFontPreloaded(targetLanguage);
             if (shouldLoadRemoteFont)
             {
-                var fontLoaded = false;
-                yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage, success => fontLoaded = success);
-                if (!fontLoaded)
+                var fontReady = false;
+                yield return WaitForRemoteFontIfNeeded(targetLanguage, success => fontReady = success);
+                if (!fontReady)
                 {
                     ApplyDefaultLanguageAfterFontFailure();
                     targetLanguage = LocalizationManager.DefaultLanguage;
@@ -347,9 +343,9 @@ namespace FineLocalization.Scripts.Runtime
             var shouldLoadRemoteFont = needsRemoteFont && !IsRemoteFontPreloaded(targetLanguage);
             if (shouldLoadRemoteFont)
             {
-                var fontLoaded = false;
-                yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage, success => fontLoaded = success);
-                if (!fontLoaded)
+                var fontReady = false;
+                yield return WaitForRemoteFontIfNeeded(targetLanguage, success => fontReady = success);
+                if (!fontReady)
                 {
                     ApplyDefaultLanguageAfterFontFailure();
                     targetLanguage = LocalizationManager.DefaultLanguage;
@@ -367,40 +363,30 @@ namespace FineLocalization.Scripts.Runtime
             onComplete?.Invoke(true);
         }
 
-        private IEnumerator PreloadRemoteFontOrFallbackToDefault(string requestedLanguage, Action<string> onLanguageResolved)
+        private IEnumerator WaitForRemoteFontIfNeeded(string targetLanguage, Action<bool> onComplete)
         {
-            var language = NormalizeLanguageCandidate(requestedLanguage);
-            if (string.IsNullOrWhiteSpace(language))
+            if (!ShouldLoadRemoteFont(targetLanguage))
             {
-                onLanguageResolved?.Invoke(language);
+                onComplete?.Invoke(true);
                 yield break;
             }
 
-            if (IsRemoteFontPreloaded(language))
+            var normalizedLanguage = NormalizeLanguageCandidate(targetLanguage);
+            if (RemoteFontBundleLoader.IsRemoteFontReady &&
+                string.Equals(RemoteFontBundleLoader.LastRemoteFontLanguage, normalizedLanguage, StringComparison.OrdinalIgnoreCase))
             {
-                onLanguageResolved?.Invoke(language);
-                yield break;
-            }
-
-            if (!ShouldLoadRemoteFont(language))
-            {
-                onLanguageResolved?.Invoke(language);
+                _preloadedRemoteFontLanguage = normalizedLanguage;
+                onComplete?.Invoke(true);
                 yield break;
             }
 
             var fontLoaded = false;
-            yield return remoteFontBundleLoader.EnsureFontForLanguage(language, success => fontLoaded = success);
+            yield return remoteFontBundleLoader.EnsureFontForLanguage(normalizedLanguage, success => fontLoaded = success);
 
-            if (fontLoaded)
-            {
-                _preloadedRemoteFontLanguage = language;
-                onLanguageResolved?.Invoke(language);
-                yield break;
-            }
+            if (fontLoaded && RemoteFontBundleLoader.IsRemoteFontReady)
+                _preloadedRemoteFontLanguage = normalizedLanguage;
 
-            ApplyDefaultLanguageAfterFontFailure();
-            _preloadedRemoteFontLanguage = null;
-            onLanguageResolved?.Invoke(LocalizationManager.DefaultLanguage);
+            onComplete?.Invoke(fontLoaded && RemoteFontBundleLoader.IsRemoteFontReady);
         }
 
         private bool IsRemoteFontPreloaded(string language)
