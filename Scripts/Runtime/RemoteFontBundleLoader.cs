@@ -73,6 +73,9 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Para fontes vindas de AssetBundle, cria o material em runtime usando um material TMP local como template e o atlas remoto. Ajuda em WebGL quando o material do bundle nao desenha.")]
         [SerializeField] private bool createRuntimeMaterialForBundleFonts = true;
 
+        [Tooltip("Quando um texto contem caracteres CJK cobertos pela fonte remota, aplica a fonte remota diretamente no TMP_Text para evitar material fallback invisivel.")]
+        [SerializeField] private bool applyRemoteFontDirectlyToCjkTexts = true;
+
         [Header("Safety Filters")]
         [Tooltip("Ignora fontes cujo nome contenha estes termos. Útil para evitar NotoSansJP antigo local quando o bundle usa NotoSansJP-used.")]
         [SerializeField] private List<string> ignoredFontNameContains = new() { "NotoSansJP" };
@@ -499,6 +502,7 @@ namespace FineLocalization.Scripts.Runtime
 
                 try
                 {
+                    TryApplyRemoteFontDirectlyToText(text);
                     text.SetAllDirty();
                     text.UpdateMeshPadding();
                     text.havePropertiesChanged = true;
@@ -718,6 +722,66 @@ namespace FineLocalization.Scripts.Runtime
                     NormalizeFallbackMaterial(GetCanvasRendererMaterial(subMesh.canvasRenderer), remoteMaterial, remoteAtlas);
                 }
             }
+        }
+
+        private void TryApplyRemoteFontDirectlyToText(TMP_Text text)
+        {
+            if (!applyRemoteFontDirectlyToCjkTexts || text == null || string.IsNullOrEmpty(text.text))
+                return;
+
+            if (!ContainsCjkOrKana(text.text))
+                return;
+
+            var remoteFont = GetFirstRuntimeFontAsset();
+            if (remoteFont == null || text.font == remoteFont)
+                return;
+
+            if (!FontHasAllCjkCharacters(remoteFont, text.text))
+                return;
+
+            var previousFont = text.font;
+            RepairFontMaterial(remoteFont, null);
+            if (!IsUsableFontAsset(remoteFont))
+                return;
+
+            EnsureDirectFontFallback(remoteFont, previousFont);
+
+            text.font = remoteFont;
+            text.fontSharedMaterial = remoteFont.material;
+            text.UpdateMeshPadding();
+
+            FineLocalizationLogger.Log(
+                () => $"[RemoteFontBundleLoader] Fonte remota aplicada diretamente em TMP_Text '{text.name}': '{remoteFont.name}' substituiu '{previousFont?.name ?? "NULL"}'."
+            );
+        }
+
+        private void EnsureDirectFontFallback(TMP_FontAsset remoteFont, TMP_FontAsset previousFont)
+        {
+            if (remoteFont == null || previousFont == null || IsSameFontAsset(remoteFont, previousFont))
+                return;
+
+            remoteFont.fallbackFontAssetTable ??= new List<TMP_FontAsset>();
+
+            if (!remoteFont.fallbackFontAssetTable.Contains(previousFont))
+                remoteFont.fallbackFontAssetTable.Add(previousFont);
+        }
+
+        private static bool FontHasAllCjkCharacters(TMP_FontAsset font, string text)
+        {
+            if (font == null || string.IsNullOrEmpty(text))
+                return false;
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                var c = text[i];
+                if (!IsCjkOrKana(c))
+                    continue;
+
+                if (!font.HasCharacter(c))
+                    return false;
+            }
+
+            return true;
         }
 
         private static void NormalizeFallbackMaterial(Material fallbackMaterial, Material remoteMaterial, Texture remoteAtlas)
