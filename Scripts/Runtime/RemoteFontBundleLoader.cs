@@ -1716,7 +1716,7 @@ namespace FineLocalization.Scripts.Runtime
                 return null;
 
             RemoteFontBundleConfig bestMatch = null;
-            int bestLength = -1;
+            int bestScore = -1;
 
             for (int i = 0; i < bundles.Count; i++)
             {
@@ -1725,18 +1725,45 @@ namespace FineLocalization.Scripts.Runtime
                     continue;
 
                 var prefix = config.languagePrefix.Trim().ToLowerInvariant();
-                bool matches = language == prefix || language.StartsWith(prefix + "-", StringComparison.OrdinalIgnoreCase);
-                if (!matches)
+                var score = GetLanguageMatchScore(language, prefix);
+                if (score < 0)
                     continue;
 
-                if (prefix.Length > bestLength)
+                if (score > bestScore)
                 {
                     bestMatch = config;
-                    bestLength = prefix.Length;
+                    bestScore = score;
                 }
             }
 
             return bestMatch;
+        }
+
+        public static bool IsSameLanguageOrRoot(string a, string b)
+        {
+            return GetLanguageMatchScore(a, b) >= 0;
+        }
+
+        private static int GetLanguageMatchScore(string language, string prefix)
+        {
+            if (string.IsNullOrWhiteSpace(language) || string.IsNullOrWhiteSpace(prefix))
+                return -1;
+
+            language = language.Trim().Replace('_', '-').ToLowerInvariant();
+            prefix = prefix.Trim().Replace('_', '-').ToLowerInvariant();
+
+            if (string.Equals(language, prefix, StringComparison.OrdinalIgnoreCase))
+                return 300 + prefix.Length;
+
+            if (language.StartsWith(prefix + "-", StringComparison.OrdinalIgnoreCase))
+                return 200 + prefix.Length;
+
+            if (prefix.StartsWith(language + "-", StringComparison.OrdinalIgnoreCase))
+                return 100 + language.Length;
+
+            var languageRoot = GetRootLanguagePrefix(language);
+            var prefixRoot = GetRootLanguagePrefix(prefix);
+            return string.Equals(languageRoot, prefixRoot, StringComparison.OrdinalIgnoreCase) ? 50 + prefixRoot.Length : -1;
         }
 
         private bool IsLatinScript(string normalizedLanguage)
@@ -1744,13 +1771,22 @@ namespace FineLocalization.Scripts.Runtime
             if (!skipDownloadForLatinScripts || string.IsNullOrEmpty(normalizedLanguage))
                 return false;
 
-            var dashIndex = normalizedLanguage.IndexOf('-');
-            var rootPrefix = dashIndex >= 0 ? normalizedLanguage.Substring(0, dashIndex) : normalizedLanguage;
+            var rootPrefix = GetRootLanguagePrefix(normalizedLanguage);
 
             if (MatchesAnyPrefix(forceRemoteFontPrefixes, rootPrefix, normalizedLanguage))
                 return false;
 
             return DefaultLatinScriptPrefixes.Contains(rootPrefix) || MatchesAnyPrefix(extraLatinPrefixes, rootPrefix, normalizedLanguage);
+        }
+
+        private static string GetRootLanguagePrefix(string normalizedLanguage)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedLanguage))
+                return string.Empty;
+
+            var value = normalizedLanguage.Trim().Replace('_', '-').ToLowerInvariant();
+            var dashIndex = value.IndexOf('-');
+            return dashIndex >= 0 ? value.Substring(0, dashIndex) : value;
         }
 
         private static bool MatchesAnyPrefix(List<string> list, string rootPrefix, string normalizedLanguage)

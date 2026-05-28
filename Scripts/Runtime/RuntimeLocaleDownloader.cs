@@ -429,7 +429,7 @@ namespace FineLocalization.Scripts.Runtime
 
             var normalizedLanguage = NormalizeLanguageCandidate(targetLanguage);
             if (RemoteFontBundleLoader.IsRemoteFontReady &&
-                string.Equals(RemoteFontBundleLoader.LastRemoteFontLanguage, normalizedLanguage, StringComparison.OrdinalIgnoreCase))
+                RemoteFontBundleLoader.IsSameLanguageOrRoot(RemoteFontBundleLoader.LastRemoteFontLanguage, normalizedLanguage))
             {
                 _preloadedRemoteFontLanguage = normalizedLanguage;
                 onComplete?.Invoke(true);
@@ -448,7 +448,7 @@ namespace FineLocalization.Scripts.Runtime
         private bool IsRemoteFontPreloaded(string language)
         {
             return !string.IsNullOrWhiteSpace(language) &&
-                   string.Equals(_preloadedRemoteFontLanguage, NormalizeLanguageCandidate(language), StringComparison.OrdinalIgnoreCase);
+                   RemoteFontBundleLoader.IsSameLanguageOrRoot(_preloadedRemoteFontLanguage, NormalizeLanguageCandidate(language));
         }
 
         private static bool TryResolveAppliedLanguage(string requestedLanguage, out string appliedLanguage)
