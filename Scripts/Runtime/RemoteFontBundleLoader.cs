@@ -437,7 +437,9 @@ namespace FineLocalization.Scripts.Runtime
                 return;
 
             _savedMatchMaterialPreset = TMP_Settings.matchMaterialPreset;
-            TMP_Settings.matchMaterialPreset = false;
+            if (!TrySetTMPMatchMaterialPreset(false))
+                return;
+
             _changedMatchMaterialPreset = true;
 
             FineLocalizationLogger.Log("[RemoteFontBundleLoader] TMP_Settings.matchMaterialPreset desativado para fonte remota.");
@@ -448,8 +450,27 @@ namespace FineLocalization.Scripts.Runtime
             if (!_changedMatchMaterialPreset)
                 return;
 
-            TMP_Settings.matchMaterialPreset = _savedMatchMaterialPreset;
+            TrySetTMPMatchMaterialPreset(_savedMatchMaterialPreset);
             _changedMatchMaterialPreset = false;
+        }
+
+        private static bool TrySetTMPMatchMaterialPreset(bool value)
+        {
+            try
+            {
+                var settings = TMP_Settings.instance;
+                var field = typeof(TMP_Settings).GetField("m_matchMaterialPreset", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (settings == null || field == null)
+                    return false;
+
+                field.SetValue(settings, value);
+                return TMP_Settings.matchMaterialPreset == value;
+            }
+            catch (Exception ex)
+            {
+                FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Falha ao alterar TMP matchMaterialPreset: {ex.GetType().Name}: {ex.Message}");
+                return false;
+            }
         }
 
         private void KeepRuntimeBundleAssetsAlive(UnityEngine.Object[] assets)
