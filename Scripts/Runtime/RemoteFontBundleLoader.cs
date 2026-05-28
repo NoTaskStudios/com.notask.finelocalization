@@ -416,7 +416,12 @@ namespace FineLocalization.Scripts.Runtime
                 FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] addToAllLoadedFonts=true | TMP_FontAssets em memória: {allFonts.Length}");
 
                 for (int i = 0; i < allFonts.Length; i++)
+                {
+                    if (IsConfiguredRemoteFont(allFonts[i]) || IsKnownRemoteFallbackFamily(allFonts[i]))
+                        continue;
+
                     TryAddFallbackToFont(allFonts[i], remoteFont, "allLoadedFonts");
+                }
             }
 
             _seenFonts.Clear();
@@ -515,7 +520,7 @@ namespace FineLocalization.Scripts.Runtime
 
         private bool TryAddFallbackToFont(TMP_FontAsset targetFont, TMP_FontAsset fallbackFont, string source)
         {
-            if (targetFont == null || fallbackFont == null || targetFont == fallbackFont)
+            if (targetFont == null || fallbackFont == null || IsSameFontAsset(targetFont, fallbackFont))
                 return false;
 
             if (!_seenFonts.Add(targetFont))
@@ -547,12 +552,23 @@ namespace FineLocalization.Scripts.Runtime
 
             if (!targetFont.fallbackFontAssetTable.Contains(fallbackFont))
             {
-                targetFont.fallbackFontAssetTable.Add(fallbackFont);
+                targetFont.fallbackFontAssetTable.Insert(0, fallbackFont);
                 FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Fallback adicionado: '{fallbackFont.name}' -> '{targetFont.name}' ({source}).");
             }
 
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, targetFont);
             return true;
+        }
+
+        private static bool IsSameFontAsset(TMP_FontAsset a, TMP_FontAsset b)
+        {
+            if (a == null || b == null)
+                return false;
+
+            if (a == b)
+                return true;
+
+            return a.name.Equals(b.name, StringComparison.OrdinalIgnoreCase);
         }
 
         private void RegisterGlobalFallback(TMP_FontAsset fontAsset)
@@ -581,7 +597,7 @@ namespace FineLocalization.Scripts.Runtime
 
             if (!globalFallbacks.Contains(fontAsset))
             {
-                globalFallbacks.Add(fontAsset);
+                globalFallbacks.Insert(0, fontAsset);
                 FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Adicionado aos fallbacks globais: {fontAsset.name}. Total={globalFallbacks.Count}");
             }
 
@@ -768,7 +784,7 @@ namespace FineLocalization.Scripts.Runtime
                 if (item == preferredFallback)
                     continue;
 
-                if (IsConfiguredRemoteFont(item))
+                if (IsConfiguredRemoteFont(item) || IsKnownRemoteFallbackFamily(item))
                     list.RemoveAt(i);
             }
         }
@@ -801,8 +817,14 @@ namespace FineLocalization.Scripts.Runtime
             if (targetFont == null)
                 return true;
 
-            if (allowRemoteFontWhenIgnoredByName && targetFont == remoteFont)
-                return false;
+            if (IsSameFontAsset(targetFont, remoteFont))
+                return true;
+
+            if (IsConfiguredRemoteFont(targetFont))
+                return true;
+
+            if (IsKnownRemoteFallbackFamily(targetFont))
+                return true;
 
             if (ignoredFontNameContains == null)
                 return false;
@@ -823,6 +845,19 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             return false;
+        }
+
+        private static bool IsKnownRemoteFallbackFamily(TMP_FontAsset font)
+        {
+            if (font == null || string.IsNullOrWhiteSpace(font.name))
+                return false;
+
+            var name = font.name;
+            return name.IndexOf("NotoSansJP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   name.IndexOf("NotoSansKR", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   name.IndexOf("NotoSansSC", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   name.IndexOf("NotoSansTC", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   name.IndexOf("NotoSansThai", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private bool IsSameRemoteFontFamily(TMP_FontAsset a, TMP_FontAsset b)

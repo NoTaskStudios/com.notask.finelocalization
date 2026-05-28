@@ -118,7 +118,6 @@ namespace FineLocalization.Runtime
         {
             if (Dictionary.Count > 0) return;
 
-            var keys = new HashSet<string>(); // evita duplicidade global de chave
             var settings = LocalizationSettings.Instance;
             if (settings == null)
             {
@@ -229,14 +228,6 @@ namespace FineLocalization.Runtime
                         var key = cols[keyColumnIndex];
                         if (string.IsNullOrWhiteSpace(key)) continue;
                     
-                        // Permite a mesma key em outros sheets; se quiser global único, mantenha esse HashSet:
-                        if (keys.Contains(key))
-                        {
-                            FineLocalizationLogger.LogWarning(() => $"[FineLocalization] key duplicada `{key}` (sheet `{sheet.Name}`). Linha ignorada.");
-                            continue;
-                        }
-                        keys.Add(key);
-                    
                         for (var j = firstLanguageColumnIndex; j < header.Count; j++)
                         {
                             var lang = NormalizeLanguageKey(header[j]);
@@ -245,9 +236,16 @@ namespace FineLocalization.Runtime
                             var value = j < cols.Count ? cols[j] : string.Empty;
                     
                             if (!Dictionary[lang].ContainsKey(key))
+                            {
                                 Dictionary[lang].Add(key, value);
-                            else{
-                                FineLocalizationLogger.LogWarning(() => $"[FineLocalization] key duplicada `{key}` para idioma `{lang}` em `{sheet.Name}`.");
+                            }
+                            else if (string.IsNullOrEmpty(Dictionary[lang][key]) && !string.IsNullOrEmpty(value))
+                            {
+                                Dictionary[lang][key] = value;
+                            }
+                            else if (!string.IsNullOrEmpty(value) && !string.Equals(Dictionary[lang][key], value, StringComparison.Ordinal))
+                            {
+                                FineLocalizationLogger.LogWarning(() => $"[FineLocalization] key duplicada `{key}` para idioma `{lang}` em `{sheet.Name}`. Mantendo primeiro valor.");
                             }
                         }
                     }
