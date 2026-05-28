@@ -56,6 +56,18 @@ namespace FineLocalization.Scripts.Runtime
             "lang", "language", "locale", "culture", "lng"
         };
 
+        private static readonly HashSet<string> DefaultLatinScriptPrefixes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "en", "es", "pt", "fr", "de", "it", "nl", "ca", "gl", "eu", "oc", "rm",
+            "sv", "no", "nb", "nn", "da", "fi", "is", "fo",
+            "pl", "cs", "sk", "ro", "hu", "sl", "hr", "bs", "sq", "lt", "lv", "et",
+            "tr", "az", "uz", "tk", "kk",
+            "id", "ms", "vi", "tl", "fil",
+            "ga", "cy", "gd", "br", "kw",
+            "sw", "af", "zu", "xh", "yo", "ig", "ha", "so", "rw", "mg", "st", "sn", "ny",
+            "lb", "fy", "mt", "ku", "ht", "qu", "gn"
+        };
+
         private static Action<bool> _onDownloadLocalizationComplete = _ => { };
         private static Action<bool> _onAllSheetsDownloadedComplete = _ => { };
 
@@ -337,6 +349,8 @@ namespace FineLocalization.Scripts.Runtime
                 yield break;
             }
 
+            EnsureLanguageCanRenderWithoutMissingFont(ref targetLanguage);
+
             var needsRemoteFont = ShouldLoadRemoteFont(targetLanguage);
             var shouldLoadRemoteFont = needsRemoteFont && !IsRemoteFontPreloaded(targetLanguage);
             if (shouldLoadRemoteFont)
@@ -385,6 +399,10 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             var requestedLanguage = targetLanguage;
+            EnsureLanguageCanRenderWithoutMissingFont(ref targetLanguage);
+            if (!string.Equals(requestedLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+                requestedLanguage = targetLanguage;
+
             var needsRemoteFont = ShouldLoadRemoteFont(targetLanguage);
             var shouldLoadRemoteFont = needsRemoteFont && !IsRemoteFontPreloaded(targetLanguage);
             if (shouldLoadRemoteFont)
@@ -483,6 +501,32 @@ namespace FineLocalization.Scripts.Runtime
                    remoteFontBundleLoader.ShouldLoadRemoteFontForLanguage(language);
         }
 
+        private void EnsureLanguageCanRenderWithoutMissingFont(ref string targetLanguage)
+        {
+            var normalizedLanguage = NormalizeLanguageCandidate(targetLanguage);
+            if (string.IsNullOrWhiteSpace(normalizedLanguage) ||
+                string.Equals(normalizedLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase) ||
+                IsLatinScriptLanguage(normalizedLanguage))
+            {
+                targetLanguage = normalizedLanguage;
+                return;
+            }
+
+            var canLoadRemoteFont = loadRemoteFontBeforeApplyingLocalization &&
+                                    remoteFontBundleLoader != null &&
+                                    remoteFontBundleLoader.ShouldLoadRemoteFontForLanguage(normalizedLanguage);
+            if (canLoadRemoteFont)
+            {
+                targetLanguage = normalizedLanguage;
+                return;
+            }
+
+            FineLocalizationLogger.LogWarning(
+                () => $"[FineLocalization] Idioma '{normalizedLanguage}' requer fonte remota, mas RemoteFontBundleLoader não está configurado. Aplicando '{LocalizationManager.DefaultLanguage}'."
+            );
+            targetLanguage = LocalizationManager.DefaultLanguage;
+        }
+
         private void IgnoreNextRemoteFontLocalizationEvent()
         {
             if (loadRemoteFontBeforeApplyingLocalization && remoteFontBundleLoader != null)
@@ -548,6 +592,17 @@ namespace FineLocalization.Scripts.Runtime
             var normalized = NormalizeLanguageCandidate(language);
             return !string.IsNullOrWhiteSpace(normalized) &&
                    !string.Equals(normalized, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsLatinScriptLanguage(string language)
+        {
+            var normalized = NormalizeLanguageCandidate(language);
+            if (string.IsNullOrWhiteSpace(normalized))
+                return false;
+
+            var dashIndex = normalized.IndexOf('-');
+            var rootPrefix = dashIndex >= 0 ? normalized.Substring(0, dashIndex) : normalized;
+            return DefaultLatinScriptPrefixes.Contains(rootPrefix);
         }
 
         private static string TryResolveLanguageFromLaunchUrl()
