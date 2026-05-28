@@ -126,6 +126,7 @@ namespace FineLocalization.Scripts.Runtime
         private readonly HashSet<TMP_FontAsset> _seenFonts = new();
         private readonly HashSet<TMP_FontAsset> _fontValidationStack = new();
         private bool _ignoreNextLocalizationChanged;
+        private int _preRenderRepairFrames;
 
         public static event Action<bool> OnDownloadRemoteFontComplete = _ => { };
         public static event Action<string, bool> OnRemoteFontDownloadComplete = (_, _) => { };
@@ -136,6 +137,8 @@ namespace FineLocalization.Scripts.Runtime
 
         private void OnEnable()
         {
+            Canvas.preWillRenderCanvases += RepairFallbacksBeforeCanvasRender;
+
             if (loadOnLocalizationChanged)
                 LocalizationManager.OnLocalizationChanged += EnsureCurrentLanguageFont;
 
@@ -154,8 +157,21 @@ namespace FineLocalization.Scripts.Runtime
 
         private void OnDisable()
         {
+            Canvas.preWillRenderCanvases -= RepairFallbacksBeforeCanvasRender;
+
             if (loadOnLocalizationChanged)
                 LocalizationManager.OnLocalizationChanged -= EnsureCurrentLanguageFont;
+        }
+
+        private void RepairFallbacksBeforeCanvasRender()
+        {
+            if (_preRenderRepairFrames <= 0)
+                return;
+
+            _preRenderRepairFrames--;
+            RepairGlobalTMPFallbacks();
+            RepairLoadedFontFallbackTrees();
+            ClearTMPFallbackMaterialCache();
         }
 
         public void EnsureCurrentLanguageFont()
@@ -404,6 +420,7 @@ namespace FineLocalization.Scripts.Runtime
             RepairGlobalTMPFallbacks();
             RepairLoadedFontFallbackTrees();
             ClearTMPFallbackMaterialCache();
+            _preRenderRepairFrames = 8;
             bundle.Unload(false);
             CompleteFontDownload(normalizedLanguage, true, onComplete, true);
         }
