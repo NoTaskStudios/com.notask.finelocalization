@@ -472,6 +472,7 @@ namespace FineLocalization.Scripts.Runtime
             // for every character not found in the primary font; a null material there causes a crash
             // that ValidateFontTreeForText (which only checks local fallbackFontAssetTable) cannot prevent.
             RepairGlobalTMPFallbacks();
+            ClearTMPFallbackMaterialCache();
 
             int rebuilt = 0;
             int skipped = 0;
@@ -623,7 +624,8 @@ namespace FineLocalization.Scripts.Runtime
             sb.Append("remote=").Append(DescribeFont(remoteFont)).Append(" ");
             sb.Append("visible=").Append(GetVisibleCharacterCount(text)).Append('/').Append(text.textInfo.characterCount).Append(" ");
             sb.Append("missingRemote=").Append(GetMissingCharactersForFont(remoteFont, text.text)).Append(" ");
-            sb.Append("usedFonts=").Append(GetUsedFontsForTextInfo(text));
+            sb.Append("usedFonts=").Append(GetUsedFontsForTextInfo(text)).Append(" ");
+            sb.Append("materials=").Append(GetTextMaterialDiagnostics(text));
 
             FineLocalizationLogger.Log(sb.ToString());
         }
@@ -673,6 +675,101 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             return names.Count == 0 ? "<none>" : string.Join(", ", names);
+        }
+
+        private static string GetTextMaterialDiagnostics(TMP_Text text)
+        {
+            if (text == null)
+                return "<text null>";
+
+            var parts = new List<string>();
+
+            try
+            {
+                var sharedMaterials = text.fontSharedMaterials;
+                if (sharedMaterials != null)
+                {
+                    for (int i = 0; i < sharedMaterials.Length; i++)
+                        parts.Add($"fontShared[{i}]={DescribeMaterial(sharedMaterials[i])}");
+                }
+            }
+            catch (Exception ex)
+            {
+                parts.Add($"fontSharedMaterialsError={ex.GetType().Name}");
+            }
+
+            if (text is TextMeshProUGUI uiText)
+            {
+                parts.Add($"canvasAlpha={uiText.canvasRenderer.GetAlpha():0.###}");
+
+                var subMeshes = uiText.GetComponentsInChildren<TMP_SubMeshUI>(true);
+                for (int i = 0; i < subMeshes.Length; i++)
+                {
+                    var subMesh = subMeshes[i];
+                    if (subMesh == null)
+                        continue;
+
+                    parts.Add(
+                        $"subMesh[{i}]='{subMesh.name}' active={subMesh.gameObject.activeInHierarchy} mat={DescribeMaterial(subMesh.sharedMaterial)} rendererMat={DescribeMaterial(GetCanvasRendererMaterial(subMesh.canvasRenderer))}"
+                    );
+                }
+            }
+
+            return parts.Count == 0 ? "<none>" : string.Join(" | ", parts);
+        }
+
+        private static Material GetCanvasRendererMaterial(CanvasRenderer renderer)
+        {
+            if (renderer == null)
+                return null;
+
+            try
+            {
+                var noArgMethod = typeof(CanvasRenderer).GetMethod("GetMaterial", Type.EmptyTypes);
+                if (noArgMethod != null)
+                    return noArgMethod.Invoke(renderer, null) as Material;
+
+                var indexedMethod = typeof(CanvasRenderer).GetMethod("GetMaterial", new[] { typeof(int) });
+                return indexedMethod?.Invoke(renderer, new object[] { 0 }) as Material;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string DescribeMaterial(Material material)
+        {
+            if (material == null)
+                return "NULL";
+
+            string mainTexName = "NULL";
+            string faceColor = "n/a";
+
+            try
+            {
+                var mainTex = material.GetTexture(ShaderUtilities.ID_MainTex);
+                mainTexName = mainTex != null ? mainTex.name : "NULL";
+            }
+            catch
+            {
+                mainTexName = "ERROR";
+            }
+
+            try
+            {
+                if (material.HasProperty(ShaderUtilities.ID_FaceColor))
+                {
+                    var color = material.GetColor(ShaderUtilities.ID_FaceColor);
+                    faceColor = $"{color.r:0.###},{color.g:0.###},{color.b:0.###},{color.a:0.###}";
+                }
+            }
+            catch
+            {
+                faceColor = "ERROR";
+            }
+
+            return $"{material.name}/shader={(material.shader != null ? material.shader.name : "NULL")}/mainTex={mainTexName}/face={faceColor}/renderQueue={material.renderQueue}";
         }
 
         private static string GetMissingCharactersForFont(TMP_FontAsset font, string text)
@@ -932,6 +1029,20 @@ namespace FineLocalization.Scripts.Runtime
             }
         }
 
+        private static void ClearTMPFallbackMaterialCache()
+        {
+            try
+            {
+                var type = Type.GetType("TMPro.TMP_MaterialManager, Unity.TextMeshPro");
+                var method = type?.GetMethod("ClearFallbackMaterials", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                method?.Invoke(null, null);
+            }
+            catch (Exception ex)
+            {
+                FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] ClearFallbackMaterials falhou: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
         private void RemoveConfiguredRemoteFallbacks(List<TMP_FontAsset> list, TMP_FontAsset preferredFallback)
         {
             if (list == null)
@@ -1145,6 +1256,7 @@ namespace FineLocalization.Scripts.Runtime
             material.hideFlags |= HideFlags.DontUnloadUnusedAsset;
 
             _runtimeMaterials.Add(material);
+            ClearTMPFallbackMaterialCache();
 
             FineLocalizationLogger.Log(
                 () => $"[RemoteFontBundleLoader] Material runtime criado para '{fontAsset.name}' usando template local '{sourceMaterial.name}' e atlas '{atlasTexture.name}'."
