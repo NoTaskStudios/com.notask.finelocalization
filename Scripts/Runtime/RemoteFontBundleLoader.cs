@@ -701,7 +701,7 @@ namespace FineLocalization.Scripts.Runtime
                 if (sharedMaterials != null)
                 {
                     for (int i = 0; i < sharedMaterials.Length; i++)
-                        NormalizeFallbackMaterial(sharedMaterials[i], remoteMaterial, remoteAtlas);
+                        NormalizeFallbackMaterial(sharedMaterials[i], remoteFont, remoteMaterial, remoteAtlas);
                 }
             }
             catch
@@ -718,8 +718,8 @@ namespace FineLocalization.Scripts.Runtime
                     if (subMesh == null)
                         continue;
 
-                    NormalizeFallbackMaterial(subMesh.sharedMaterial, remoteMaterial, remoteAtlas);
-                    NormalizeFallbackMaterial(GetCanvasRendererMaterial(subMesh.canvasRenderer), remoteMaterial, remoteAtlas);
+                    NormalizeFallbackMaterial(subMesh.sharedMaterial, remoteFont, remoteMaterial, remoteAtlas);
+                    NormalizeFallbackMaterial(GetCanvasRendererMaterial(subMesh.canvasRenderer), remoteFont, remoteMaterial, remoteAtlas);
                 }
             }
         }
@@ -784,9 +784,9 @@ namespace FineLocalization.Scripts.Runtime
             return true;
         }
 
-        private static void NormalizeFallbackMaterial(Material fallbackMaterial, Material remoteMaterial, Texture remoteAtlas)
+        private static void NormalizeFallbackMaterial(Material fallbackMaterial, TMP_FontAsset remoteFont, Material remoteMaterial, Texture remoteAtlas)
         {
-            if (fallbackMaterial == null || remoteMaterial == null || remoteAtlas == null)
+            if (fallbackMaterial == null || remoteFont == null || remoteMaterial == null || remoteAtlas == null)
                 return;
 
             Texture mainTex = null;
@@ -802,9 +802,7 @@ namespace FineLocalization.Scripts.Runtime
             if (mainTex != remoteAtlas)
                 return;
 
-            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_GradientScale");
-            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_TextureWidth");
-            CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_TextureHeight");
+            ApplyFontAtlasSdfMetrics(fallbackMaterial, remoteFont);
             CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_ScaleX");
             CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_ScaleY");
             CopyMaterialFloatIfPresent(remoteMaterial, fallbackMaterial, "_PerspectiveFilter");
@@ -1349,12 +1347,14 @@ namespace FineLocalization.Scripts.Runtime
             if (TryNormalizeMaterial(currentMaterial, atlasTexture))
             {
                 currentMaterial.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+                ApplyFontAtlasSdfMetrics(currentMaterial, fontAsset);
                 return;
             }
 
             if (TryNormalizeMaterial(preferredMaterial, atlasTexture))
             {
                 preferredMaterial.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+                ApplyFontAtlasSdfMetrics(preferredMaterial, fontAsset);
                 // Keep a strong managed reference so the C# GC cannot collect this
                 // bundle-sourced material between the first load and subsequent rebuilds.
                 if (!_runtimeMaterials.Contains(preferredMaterial))
@@ -1446,16 +1446,16 @@ namespace FineLocalization.Scripts.Runtime
                 int padding = fontAsset.atlasPadding;
 
                 if (w > 0)
-                    material.SetFloat(ShaderUtilities.ID_TextureWidth, w);
+                    SetMaterialFloatIfPresent(material, "_TextureWidth", w);
 
                 if (h > 0)
-                    material.SetFloat(ShaderUtilities.ID_TextureHeight, h);
+                    SetMaterialFloatIfPresent(material, "_TextureHeight", h);
 
                 if (padding >= 0)
-                    material.SetFloat(ShaderUtilities.ID_GradientScale, padding + 1);
+                    SetMaterialFloatIfPresent(material, "_GradientScale", padding + 1);
 
                 FineLocalizationLogger.Log(
-                    () => $"[RemoteFontBundleLoader] SDF metrics para '{fontAsset.name}': " +
+                    () => $"[RemoteFontBundleLoader] SDF metrics for '{fontAsset.name}': " +
                           $"atlas={w}x{h} padding={padding} gradientScale={padding + 1}"
                 );
             }
@@ -1465,6 +1465,12 @@ namespace FineLocalization.Scripts.Runtime
                     () => $"[RemoteFontBundleLoader] Falha ao aplicar SDF metrics para '{fontAsset.name}': {ex.Message}"
                 );
             }
+        }
+
+        private static void SetMaterialFloatIfPresent(Material material, string propertyName, float value)
+        {
+            if (material != null && material.HasProperty(propertyName))
+                material.SetFloat(propertyName, value);
         }
 
         private static void TryReadFontAssetDefinition(TMP_FontAsset fontAsset)
