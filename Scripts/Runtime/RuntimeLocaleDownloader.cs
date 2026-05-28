@@ -178,10 +178,19 @@ namespace FineLocalization.Scripts.Runtime
 
         private void HandleLocalizationLanguageChanged()
         {
+            var language = NormalizeLanguageCandidate(LocalizationManager.Language);
+            if (ShouldUseDefaultLanguageWithoutRemoteFont(language))
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[FineLocalization] Idioma '{language}' requer fonte remota, mas RemoteFontBundleLoader não está configurado. Aplicando '{LocalizationManager.DefaultLanguage}'."
+                );
+                LocalizationManager.Language = LocalizationManager.DefaultLanguage;
+                return;
+            }
+
             if (!acceptLocalizationManagerLanguageAsRequested || HasExplicitRequestedLanguage)
                 return;
 
-            var language = NormalizeLanguageCandidate(LocalizationManager.Language);
             if (!IsNonDefaultLanguage(language))
                 return;
 
@@ -504,18 +513,7 @@ namespace FineLocalization.Scripts.Runtime
         private void EnsureLanguageCanRenderWithoutMissingFont(ref string targetLanguage)
         {
             var normalizedLanguage = NormalizeLanguageCandidate(targetLanguage);
-            if (string.IsNullOrWhiteSpace(normalizedLanguage) ||
-                string.Equals(normalizedLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase) ||
-                IsLatinScriptLanguage(normalizedLanguage))
-            {
-                targetLanguage = normalizedLanguage;
-                return;
-            }
-
-            var canLoadRemoteFont = loadRemoteFontBeforeApplyingLocalization &&
-                                    remoteFontBundleLoader != null &&
-                                    remoteFontBundleLoader.ShouldLoadRemoteFontForLanguage(normalizedLanguage);
-            if (canLoadRemoteFont)
+            if (!ShouldUseDefaultLanguageWithoutRemoteFont(normalizedLanguage))
             {
                 targetLanguage = normalizedLanguage;
                 return;
@@ -525,6 +523,21 @@ namespace FineLocalization.Scripts.Runtime
                 () => $"[FineLocalization] Idioma '{normalizedLanguage}' requer fonte remota, mas RemoteFontBundleLoader não está configurado. Aplicando '{LocalizationManager.DefaultLanguage}'."
             );
             targetLanguage = LocalizationManager.DefaultLanguage;
+        }
+
+        private bool ShouldUseDefaultLanguageWithoutRemoteFont(string language)
+        {
+            var normalizedLanguage = NormalizeLanguageCandidate(language);
+            if (string.IsNullOrWhiteSpace(normalizedLanguage) ||
+                string.Equals(normalizedLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase) ||
+                IsLatinScriptLanguage(normalizedLanguage))
+            {
+                return false;
+            }
+
+            return !loadRemoteFontBeforeApplyingLocalization ||
+                   remoteFontBundleLoader == null ||
+                   !remoteFontBundleLoader.ShouldLoadRemoteFontForLanguage(normalizedLanguage);
         }
 
         private void IgnoreNextRemoteFontLocalizationEvent()
