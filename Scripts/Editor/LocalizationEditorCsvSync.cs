@@ -36,36 +36,6 @@ namespace FineLocalization.EditorTools
 
         private const int RequestTimeoutSeconds = 20;
 
-        // Garante TXT/CSV em UTF-8 sem BOM. Isso evita falhas silenciosas no
-        // TextMeshPro Font Asset Creator ao usar "Characters from File".
-        private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
-
-        // Blocos pequenos e seguros para UI. Não é Unicode completo: é um reforço
-        // para caracteres comuns que podem aparecer em runtime, sem explodir memória no WebGL mobile.
-        private const string CjkPunctuationCharacters =
-            "。、，．・：；？！ー〜～（）［］「」『』【】《》〈〉…‥※〒・";
-
-        private const string JapaneseSafetyCharacters =
-            "フ" +
-            "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞ" +
-            "ただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽ" +
-            "まみむめもゃやゅゆょよらりるれろゎわゐゑをんゔ" +
-            "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾ" +
-            "タダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポ" +
-            "マミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶ" +
-            "パピプペポファフィフェフォティディトゥドゥキャキュキョシャシュショチャチュチョニャニュニョヒャヒュヒョミャミュミョリャリュリョ";
-
-        private const string KoreanSafetyCharacters =
-            "가나다라마바사아자차카타파하거너더러머버서어저처커터퍼허고노도로모보소오조초코토포호" +
-            "구누두루무부수우주추쿠투푸후기니디리미비시이지치키티피히";
-
-        private const string ThaiSafetyCharacters =
-            "กขฃคฅฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮ" +
-            "ะาำิีึืุูเแโใไๅๆ็่้๊๋์ํ๎๐๑๒๓๔๕๖๗๘๙฿";
-
-        private const string ChineseSafetyPunctuationCharacters =
-            "的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把性好应开它合还因由其些然前外天政四日那社义事平形相全表间样与关各重新线内数正心反你明看原又么利比或但质气第向道命此变条只没结解问意建月公无系军很情者最立代想已通并提直题党程展五果料象员革位入常文总次品式活设及管特件长求老头基资边流路级少图山统接知较将组见计别她手角期根论运农指几九区强放决西被干做必战先回则任取据处理世受领太共权收证改清美再采转更单风切打白教速花带安场身车例真务具万每目至达走积示议声报斗完类八离华名确才科张信马节话米整空元况今集温传土许步群广石记需段研界拉林律叫且究观越织装影算低持音众书布复容儿须际商非验连断深难近矿千周委素技备半办青省列习响约支般史感劳便团往酸历市克何除消构府称太准精值号率族维划选标写存候毛亲快效斯院查江型眼王按格养易置派层片始却专状育厂京识适属圆包火住调满县局照参红细引听该铁价严龙飞";
-
         /*
          * Importante:
          * Nem todo caractere mostrado no jogo vem da planilha.
@@ -80,7 +50,7 @@ namespace FineLocalization.EditorTools
             "ºª°§©®™…–—•";
 
         private const string CurrencyRuntimeCharacters =
-            "€£¥¢₹₽₩₫₴₺₿";
+            "€£¥¢₩₫₴₺";
 
         /// <summary>
         /// Entry point do menu — abre o popup de escolha. Production é destacada
@@ -384,7 +354,7 @@ namespace FineLocalization.EditorTools
             var safeFileName = SanitizeFileName(sheetName);
             var filePath = Path.Combine(OutputFolder, safeFileName + ".csv");
 
-            File.WriteAllText(filePath, csvContent, Utf8NoBom);
+            File.WriteAllText(filePath, csvContent, Encoding.UTF8);
         }
 
         private static void GenerateCharactersTxt(
@@ -397,7 +367,6 @@ namespace FineLocalization.EditorTools
             AddAsciiPrintableCharacters(seenCharacters, charactersBuilder);
             AddTextCharacters(CommonRuntimeCharacters, seenCharacters, charactersBuilder);
             AddTextCharacters(CurrencyRuntimeCharacters, seenCharacters, charactersBuilder);
-            AddGlobalSafetyCharacters(seenCharacters, charactersBuilder);
 
             foreach (var csvPair in downloadedCsvs)
             {
@@ -415,7 +384,7 @@ namespace FineLocalization.EditorTools
             File.WriteAllText(
                 outputPath,
                 charactersBuilder.ToString(),
-                Utf8NoBom
+                Encoding.UTF8
             );
 
             FineLocalizationLogger.Log(
@@ -437,7 +406,7 @@ namespace FineLocalization.EditorTools
             File.WriteAllText(
                 outputPath,
                 charactersBuilder.ToString(),
-                Utf8NoBom
+                Encoding.UTF8
             );
 
             FineLocalizationLogger.Log(
@@ -498,7 +467,7 @@ namespace FineLocalization.EditorTools
                 File.WriteAllText(
                     outputPath,
                     languagePair.Value.Builder.ToString(),
-                    Utf8NoBom
+                    Encoding.UTF8
                 );
             }
 
@@ -517,59 +486,8 @@ namespace FineLocalization.EditorTools
                 return characterSet;
 
             characterSet = new CharacterSet();
-            AddLanguageSafetyCharacters(language, characterSet.SeenCharacters, characterSet.Builder);
             languageCharacters.Add(language, characterSet);
             return characterSet;
-        }
-
-        private static void AddGlobalSafetyCharacters(
-            HashSet<char> seenCharacters,
-            StringBuilder builder
-        )
-        {
-            AddTextCharacters(CjkPunctuationCharacters, seenCharacters, builder);
-            AddTextCharacters(JapaneseSafetyCharacters, seenCharacters, builder);
-            AddTextCharacters(KoreanSafetyCharacters, seenCharacters, builder);
-            AddTextCharacters(ThaiSafetyCharacters, seenCharacters, builder);
-        }
-
-        private static void AddLanguageSafetyCharacters(
-            string language,
-            HashSet<char> seenCharacters,
-            StringBuilder builder
-        )
-        {
-            if (string.IsNullOrWhiteSpace(language))
-                return;
-
-            var normalized = language.Trim().Replace('_', '-').ToLowerInvariant();
-            var root = normalized.Split('-')[0];
-
-            if (root == "ja")
-            {
-                AddTextCharacters(CjkPunctuationCharacters, seenCharacters, builder);
-                AddTextCharacters(JapaneseSafetyCharacters, seenCharacters, builder);
-                return;
-            }
-
-            if (root == "ko")
-            {
-                AddTextCharacters(CjkPunctuationCharacters, seenCharacters, builder);
-                AddTextCharacters(KoreanSafetyCharacters, seenCharacters, builder);
-                return;
-            }
-
-            if (root == "th")
-            {
-                AddTextCharacters(ThaiSafetyCharacters, seenCharacters, builder);
-                return;
-            }
-
-            if (root == "zh")
-            {
-                AddTextCharacters(CjkPunctuationCharacters, seenCharacters, builder);
-                AddTextCharacters(ChineseSafetyPunctuationCharacters, seenCharacters, builder);
-            }
         }
 
         private static void AddAsciiPrintableCharacters(
