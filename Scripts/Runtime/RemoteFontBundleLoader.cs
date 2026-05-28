@@ -64,6 +64,15 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Último recurso. Evite em celular/WebGL: desativa/ativa GameObjects de texto.")]
         [SerializeField] private bool aggressiveRebuild = false;
 
+        [Tooltip("Loga cobertura de glifos para textos CJK ativos durante o rebuild. Útil para diagnosticar fallback que foi adicionado mas não desenha.")]
+        [SerializeField] private bool logCjkTextDiagnostics = true;
+
+        [Tooltip("Limite de textos CJK diagnosticados por ciclo de rebuild.")]
+        [SerializeField] private int maxCjkTextDiagnosticsPerRebuild = 12;
+
+        [Tooltip("Para fontes vindas de AssetBundle, cria o material em runtime usando um material TMP local como template e o atlas remoto. Ajuda em WebGL quando o material do bundle nao desenha.")]
+        [SerializeField] private bool createRuntimeMaterialForBundleFonts = true;
+
         [Header("Safety Filters")]
         [Tooltip("Ignora fontes cujo nome contenha estes termos. Útil para evitar NotoSansJP antigo local quando o bundle usa NotoSansJP-used.")]
         [SerializeField] private List<string> ignoredFontNameContains = new() { "NotoSansJP" };
@@ -466,6 +475,7 @@ namespace FineLocalization.Scripts.Runtime
 
             int rebuilt = 0;
             int skipped = 0;
+            int cjkDiagnostics = 0;
             int batch = Mathf.Max(1, rebuildBatchSize);
 
             FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] RebuildTextsBatched: analisando {texts.Length} TMP_Text(s), batch={batch}, onlyActive={rebuildOnlyActiveTexts}.");
@@ -489,8 +499,14 @@ namespace FineLocalization.Scripts.Runtime
                 try
                 {
                     text.SetAllDirty();
+                    text.UpdateMeshPadding();
                     text.havePropertiesChanged = true;
                     text.ForceMeshUpdate(ignoreActiveState: false, forceTextReparsing: true);
+                    if (ShouldLogTextGlyphDiagnostics(text, cjkDiagnostics))
+                    {
+                        LogTextGlyphDiagnostics(text);
+                        cjkDiagnostics++;
+                    }
                     rebuilt++;
                 }
                 catch (Exception ex)
@@ -581,7 +597,132 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, targetFont);
+            TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, fallbackFont);
             return true;
+        }
+
+        private bool ShouldLogTextGlyphDiagnostics(TMP_Text text, int alreadyLogged)
+        {
+            if (!logCjkTextDiagnostics || alreadyLogged >= Mathf.Max(0, maxCjkTextDiagnosticsPerRebuild))
+                return false;
+
+            if (text == null || string.IsNullOrEmpty(text.text))
+                return false;
+
+            return ContainsCjkOrKana(text.text);
+        }
+
+        private void LogTextGlyphDiagnostics(TMP_Text text)
+        {
+            var remoteFont = GetFirstRuntimeFontAsset();
+            var sb = new System.Text.StringBuilder();
+            sb.Append("[RemoteFontBundleLoader] CJK text diagnostic: ");
+            sb.Append("text='").Append(text.name).Append("' ");
+            sb.Append("value='").Append(TrimForLog(text.text, 80)).Append("' ");
+            sb.Append("font=").Append(DescribeFont(text.font)).Append(" ");
+            sb.Append("remote=").Append(DescribeFont(remoteFont)).Append(" ");
+            sb.Append("visible=").Append(GetVisibleCharacterCount(text)).Append('/').Append(text.textInfo.characterCount).Append(" ");
+            sb.Append("missingRemote=").Append(GetMissingCharactersForFont(remoteFont, text.text)).Append(" ");
+            sb.Append("usedFonts=").Append(GetUsedFontsForTextInfo(text));
+
+            FineLocalizationLogger.Log(sb.ToString());
+        }
+
+        private TMP_FontAsset GetFirstRuntimeFontAsset()
+        {
+            foreach (var kvp in _runtimeFontAssets)
+            {
+                if (kvp.Value != null)
+                    return kvp.Value;
+            }
+
+            return null;
+        }
+
+        private static int GetVisibleCharacterCount(TMP_Text text)
+        {
+            if (text?.textInfo?.characterInfo == null)
+                return 0;
+
+            var count = 0;
+            var chars = text.textInfo.characterInfo;
+            for (int i = 0; i < text.textInfo.characterCount && i < chars.Length; i++)
+            {
+                if (chars[i].isVisible)
+                    count++;
+            }
+
+            return count;
+        }
+
+        private static string GetUsedFontsForTextInfo(TMP_Text text)
+        {
+            if (text?.textInfo?.characterInfo == null)
+                return "<none>";
+
+            var names = new List<string>();
+            var chars = text.textInfo.characterInfo;
+            for (int i = 0; i < text.textInfo.characterCount && i < chars.Length; i++)
+            {
+                var font = chars[i].fontAsset;
+                if (font == null)
+                    continue;
+
+                if (!names.Contains(font.name))
+                    names.Add(font.name);
+            }
+
+            return names.Count == 0 ? "<none>" : string.Join(", ", names);
+        }
+
+        private static string GetMissingCharactersForFont(TMP_FontAsset font, string text)
+        {
+            if (font == null)
+                return "<remote font null>";
+
+            var missing = new List<string>();
+            for (int i = 0; i < text.Length; i++)
+            {
+                var c = text[i];
+                if (!IsCjkOrKana(c))
+                    continue;
+
+                if (font.HasCharacter(c))
+                    continue;
+
+                var token = $"{c}(U+{(int)c:X4})";
+                if (!missing.Contains(token))
+                    missing.Add(token);
+            }
+
+            return missing.Count == 0 ? "<none>" : string.Join(", ", missing);
+        }
+
+        private static bool ContainsCjkOrKana(string value)
+        {
+            for (int i = 0; i < value.Length; i++)
+            {
+                if (IsCjkOrKana(value[i]))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsCjkOrKana(char c)
+        {
+            return (c >= 0x3040 && c <= 0x30FF) ||
+                   (c >= 0x3400 && c <= 0x4DBF) ||
+                   (c >= 0x4E00 && c <= 0x9FFF) ||
+                   (c >= 0xF900 && c <= 0xFAFF);
+        }
+
+        private static string TrimForLog(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+                return value;
+
+            return value.Substring(0, Mathf.Max(0, maxLength)) + "...";
         }
 
         private static bool IsSameFontAsset(TMP_FontAsset a, TMP_FontAsset b)
@@ -933,6 +1074,19 @@ namespace FineLocalization.Scripts.Runtime
                 atlasTexture.hideFlags |= HideFlags.DontUnloadUnusedAsset;
 
             var currentMaterial = fontAsset.material;
+            if (createRuntimeMaterialForBundleFonts &&
+                (preferredMaterial != null || IsConfiguredRemoteFont(fontAsset)) &&
+                atlasTexture != null &&
+                !IsRuntimeOwnedMaterial(currentMaterial))
+            {
+                var runtimeMaterial = CreateRuntimeMaterialFromLocalTemplate(fontAsset, atlasTexture);
+                if (runtimeMaterial != null)
+                {
+                    fontAsset.material = runtimeMaterial;
+                    return;
+                }
+            }
+
             if (TryNormalizeMaterial(currentMaterial, atlasTexture))
             {
                 currentMaterial.hideFlags |= HideFlags.DontUnloadUnusedAsset;
@@ -972,6 +1126,31 @@ namespace FineLocalization.Scripts.Runtime
             fontAsset.material = material;
 
             FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Material reparado para '{fontAsset.name}' usando atlas '{atlasTexture.name}'.");
+        }
+
+        private bool IsRuntimeOwnedMaterial(Material material)
+        {
+            return material != null && _runtimeMaterials.Contains(material);
+        }
+
+        private Material CreateRuntimeMaterialFromLocalTemplate(TMP_FontAsset fontAsset, Texture atlasTexture)
+        {
+            var sourceMaterial = FindValidTMPMaterial(fontAsset);
+            if (sourceMaterial == null)
+                return null;
+
+            var material = Instantiate(sourceMaterial);
+            material.name = fontAsset.name + " Runtime Material";
+            material.SetTexture(ShaderUtilities.ID_MainTex, atlasTexture);
+            material.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+
+            _runtimeMaterials.Add(material);
+
+            FineLocalizationLogger.Log(
+                () => $"[RemoteFontBundleLoader] Material runtime criado para '{fontAsset.name}' usando template local '{sourceMaterial.name}' e atlas '{atlasTexture.name}'."
+            );
+
+            return material;
         }
 
         private static void TryReadFontAssetDefinition(TMP_FontAsset fontAsset)
