@@ -127,6 +127,13 @@ namespace FineLocalization.Scripts.Runtime
         private readonly HashSet<TMP_FontAsset> _fontValidationStack = new();
         private bool _ignoreNextLocalizationChanged;
 
+        public static event Action<bool> OnDownloadRemoteFontComplete = _ => { };
+        public static event Action<string, bool> OnRemoteFontDownloadComplete = (_, _) => { };
+
+        public static bool IsRemoteFontReady { get; private set; }
+        public static bool LastRemoteFontSucceeded { get; private set; }
+        public static string LastRemoteFontLanguage { get; private set; }
+
         private void OnEnable()
         {
             if (loadOnLocalizationChanged)
@@ -241,7 +248,7 @@ namespace FineLocalization.Scripts.Runtime
             if (string.IsNullOrWhiteSpace(language))
             {
                 FineLocalizationLogger.LogWarning("[RemoteFontBundleLoader] Idioma vazio. Nenhum bundle será carregado.");
-                onComplete?.Invoke(true);
+                CompleteFontDownload(language, true, onComplete);
                 yield break;
             }
 
@@ -251,7 +258,7 @@ namespace FineLocalization.Scripts.Runtime
             {
                 RemoveRemoteFallbacksForOtherLanguages(null);
                 FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] SKIP '{normalizedLanguage}': script Latin detectado.");
-                onComplete?.Invoke(true);
+                CompleteFontDownload(normalizedLanguage, true, onComplete);
                 yield break;
             }
 
@@ -259,7 +266,7 @@ namespace FineLocalization.Scripts.Runtime
             if (config == null)
             {
                 FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Nenhum bundle configurado para '{normalizedLanguage}'.");
-                onComplete?.Invoke(true);
+                CompleteFontDownload(normalizedLanguage, true, onComplete);
                 yield break;
             }
 
@@ -277,7 +284,7 @@ namespace FineLocalization.Scripts.Runtime
                 else
                     FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Fonte em cache para '{prefix}' está inválida. Reinicie o loader ou recarregue a cena.");
 
-                onComplete?.Invoke(true);
+                CompleteFontDownload(normalizedLanguage, true, onComplete);
                 yield break;
             }
 
@@ -287,7 +294,7 @@ namespace FineLocalization.Scripts.Runtime
                 while (_loadingLanguages.Contains(prefix))
                     yield return null;
 
-                onComplete?.Invoke(_loadedLanguages.Contains(prefix));
+                CompleteFontDownload(normalizedLanguage, _loadedLanguages.Contains(prefix), onComplete);
                 yield break;
             }
 
@@ -295,7 +302,7 @@ namespace FineLocalization.Scripts.Runtime
             {
                 FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] URL do bundle vazia para '{prefix}'.");
                 _loadingLanguages.Remove(prefix);
-                onComplete?.Invoke(false);
+                CompleteFontDownload(normalizedLanguage, false, onComplete);
                 yield break;
             }
 
@@ -308,7 +315,7 @@ namespace FineLocalization.Scripts.Runtime
             {
                 FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Falha ao baixar bundle de fonte '{language}'. Erro: {request.error}");
                 _loadingLanguages.Remove(prefix);
-                onComplete?.Invoke(false);
+                CompleteFontDownload(normalizedLanguage, false, onComplete);
                 yield break;
             }
 
@@ -317,7 +324,7 @@ namespace FineLocalization.Scripts.Runtime
             {
                 FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Bundle retornou null para '{language}'.");
                 _loadingLanguages.Remove(prefix);
-                onComplete?.Invoke(false);
+                CompleteFontDownload(normalizedLanguage, false, onComplete);
                 yield break;
             }
 
@@ -350,7 +357,7 @@ namespace FineLocalization.Scripts.Runtime
                 FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Nenhum TMP_FontAsset encontrado no bundle para '{language}'. Assets: {string.Join(", ", bundle.GetAllAssetNames())}");
                 bundle.Unload(false);
                 _loadingLanguages.Remove(prefix);
-                onComplete?.Invoke(false);
+                CompleteFontDownload(normalizedLanguage, false, onComplete);
                 yield break;
             }
 
@@ -374,7 +381,7 @@ namespace FineLocalization.Scripts.Runtime
                 FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Fonte remota inválida após reparo: {DescribeFont(fontAsset)}");
                 bundle.Unload(false);
                 _loadingLanguages.Remove(prefix);
-                onComplete?.Invoke(false);
+                CompleteFontDownload(normalizedLanguage, false, onComplete);
                 yield break;
             }
 
@@ -394,7 +401,18 @@ namespace FineLocalization.Scripts.Runtime
             FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Fonte registrada com sucesso: {DescribeFont(fontAsset)}");
 
             bundle.Unload(false);
-            onComplete?.Invoke(true);
+            CompleteFontDownload(normalizedLanguage, true, onComplete);
+        }
+
+        private static void CompleteFontDownload(string language, bool success, Action<bool> onComplete)
+        {
+            LastRemoteFontLanguage = language;
+            LastRemoteFontSucceeded = success;
+            IsRemoteFontReady = success;
+
+            onComplete?.Invoke(success);
+            OnDownloadRemoteFontComplete?.Invoke(success);
+            OnRemoteFontDownloadComplete?.Invoke(language, success);
         }
 
         private void KeepRuntimeBundleAssetsAlive(UnityEngine.Object[] assets)
