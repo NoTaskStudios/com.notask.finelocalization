@@ -88,7 +88,6 @@ namespace FineLocalization.Scripts.Runtime
         private readonly Dictionary<string, string> _csvData = new();
         private bool _downloadRoutineRunning;
         private bool _downloadCompleted;
-        private bool _allSheetsDownloadedNotified;
         private string _activeRequestedLanguage;
         private string _preloadedRemoteFontLanguage;
 
@@ -161,7 +160,6 @@ namespace FineLocalization.Scripts.Runtime
 
             _downloadRoutineRunning = true;
             _downloadCompleted = false;
-            _allSheetsDownloadedNotified = false;
 
             LocalizationManager.RuntimeCsvResolver = GetCsvContent;
             LocalizationManager.RuntimeCsvPersistenceHook = PersistCsvContent;
@@ -176,6 +174,8 @@ namespace FineLocalization.Scripts.Runtime
                 CompleteDownload(false);
                 yield break;
             }
+
+            yield return PreloadRemoteFontOrFallbackToDefault(_activeRequestedLanguage, language => _activeRequestedLanguage = language);
 
             if (ShouldUseBundledCsvs())
             {
@@ -234,7 +234,6 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             var fullSuccess = allSourcesSuccess && _csvData.Count > 0;
-            NotifyAllSheetsDownloaded(fullSuccess);
 
             if (fullSuccess)
             {
@@ -277,6 +276,8 @@ namespace FineLocalization.Scripts.Runtime
                 yield break;
             }
 
+            yield return PreloadRemoteFontOrFallbackToDefault(_activeRequestedLanguage, language => _activeRequestedLanguage = language);
+
             var targetLanguage = _activeRequestedLanguage;
             if (string.IsNullOrWhiteSpace(targetLanguage))
             {
@@ -296,11 +297,22 @@ namespace FineLocalization.Scripts.Runtime
             var shouldLoadRemoteFont = needsRemoteFont && !IsRemoteFontPreloaded(targetLanguage);
             if (shouldLoadRemoteFont)
             {
-                StartCoroutine(LoadRemoteFontAndRefreshTexts(targetLanguage));
+                var fontLoaded = false;
+                yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage, success => fontLoaded = success);
+                if (!fontLoaded)
+                {
+                    ApplyDefaultLanguageAfterFontFailure();
+                    targetLanguage = LocalizationManager.DefaultLanguage;
+                    needsRemoteFont = false;
+                    shouldLoadRemoteFont = false;
+                }
             }
 
             IgnoreNextRemoteFontLocalizationEvent();
             LocalizationManager.Refresh();
+
+            if (needsRemoteFont && !string.Equals(targetLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase))
+                yield return remoteFontBundleLoader.RebuildCurrentTexts();
 
             FineLocalizationLogger.Log(
                 "[FineLocalization] Using bundled CSV TextAssets (downloadOnStart = false or WebGL CORS fallback)."
@@ -333,35 +345,62 @@ namespace FineLocalization.Scripts.Runtime
 
             var needsRemoteFont = ShouldLoadRemoteFont(targetLanguage);
             var shouldLoadRemoteFont = needsRemoteFont && !IsRemoteFontPreloaded(targetLanguage);
+            if (shouldLoadRemoteFont)
+            {
+                var fontLoaded = false;
+                yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage, success => fontLoaded = success);
+                if (!fontLoaded)
+                {
+                    ApplyDefaultLanguageAfterFontFailure();
+                    targetLanguage = LocalizationManager.DefaultLanguage;
+                    needsRemoteFont = false;
+                    shouldLoadRemoteFont = false;
+                }
+            }
 
             IgnoreNextRemoteFontLocalizationEvent();
             LocalizationManager.Refresh();
 
-            if (shouldLoadRemoteFont)
-                StartCoroutine(LoadRemoteFontAndRefreshTexts(targetLanguage));
+            if (needsRemoteFont && !string.Equals(targetLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase))
+                yield return remoteFontBundleLoader.RebuildCurrentTexts();
 
             onComplete?.Invoke(true);
         }
 
-        private IEnumerator LoadRemoteFontAndRefreshTexts(string targetLanguage)
+        private IEnumerator PreloadRemoteFontOrFallbackToDefault(string requestedLanguage, Action<string> onLanguageResolved)
         {
-            if (remoteFontBundleLoader == null || string.IsNullOrWhiteSpace(targetLanguage))
-                yield break;
-
-            var fontLoaded = false;
-            yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage, success => fontLoaded = success);
-            if (!fontLoaded)
+            var language = NormalizeLanguageCandidate(requestedLanguage);
+            if (string.IsNullOrWhiteSpace(language))
             {
-                FineLocalizationLogger.LogWarning(() => $"[FineLocalization] Falha ao carregar fonte remota para '{targetLanguage}'. Mantendo idioma aplicado e fonte original.");
+                onLanguageResolved?.Invoke(language);
                 yield break;
             }
 
-            _preloadedRemoteFontLanguage = NormalizeLanguageCandidate(targetLanguage);
-            IgnoreNextRemoteFontLocalizationEvent();
-            LocalizationManager.Refresh();
+            if (IsRemoteFontPreloaded(language))
+            {
+                onLanguageResolved?.Invoke(language);
+                yield break;
+            }
 
-            if (!string.Equals(targetLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase))
-                yield return remoteFontBundleLoader.RebuildCurrentTexts();
+            if (!ShouldLoadRemoteFont(language))
+            {
+                onLanguageResolved?.Invoke(language);
+                yield break;
+            }
+
+            var fontLoaded = false;
+            yield return remoteFontBundleLoader.EnsureFontForLanguage(language, success => fontLoaded = success);
+
+            if (fontLoaded)
+            {
+                _preloadedRemoteFontLanguage = language;
+                onLanguageResolved?.Invoke(language);
+                yield break;
+            }
+
+            ApplyDefaultLanguageAfterFontFailure();
+            _preloadedRemoteFontLanguage = null;
+            onLanguageResolved?.Invoke(LocalizationManager.DefaultLanguage);
         }
 
         private bool IsRemoteFontPreloaded(string language)
@@ -387,6 +426,12 @@ namespace FineLocalization.Scripts.Runtime
                 () => $"[FineLocalization] Idioma solicitado '{requestedLanguage}' não foi encontrado nos CSVs carregados. Não aplicando en-us automaticamente."
             );
             return false;
+        }
+
+        private static void ApplyDefaultLanguageAfterFontFailure()
+        {
+            FineLocalizationLogger.LogWarning("[FineLocalization] Falha ao carregar fonte remota. Aplicando en-us como fallback.");
+            LocalizationManager.ReloadAll(LocalizationManager.DefaultLanguage, false);
         }
 
         private bool ShouldLoadRemoteFont(string language)
@@ -519,21 +564,12 @@ namespace FineLocalization.Scripts.Runtime
 
         private void CompleteDownload(bool success)
         {
-            NotifyAllSheetsDownloaded(success);
             MarkReady(success);
             _downloadRoutineRunning = false;
             _downloadCompleted = true;
             _activeRequestedLanguage = null;
             _preloadedRemoteFontLanguage = null;
             OnDownloadLocalizationComplete?.Invoke(success);
-        }
-
-        private void NotifyAllSheetsDownloaded(bool success)
-        {
-            if (_allSheetsDownloadedNotified)
-                return;
-
-            _allSheetsDownloadedNotified = true;
             OnAllSheetsDownloadedComplete?.Invoke(success);
         }
 
