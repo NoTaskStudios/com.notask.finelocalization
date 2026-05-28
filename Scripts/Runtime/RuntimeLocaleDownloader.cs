@@ -185,7 +185,11 @@ namespace FineLocalization.Scripts.Runtime
             var fullSuccess = allSourcesSuccess && _csvData.Count > 0;
 
             if (fullSuccess)
-                yield return ApplyLocalizationWithOptionalRemoteFont(_csvData);
+            {
+                var applySuccess = false;
+                yield return ApplyLocalizationWithOptionalRemoteFont(_csvData, success => applySuccess = success);
+                fullSuccess = applySuccess;
+            }
 
             MarkReady(fullSuccess);
             OnDownloadLocalizationComplete?.Invoke(fullSuccess);
@@ -214,14 +218,34 @@ namespace FineLocalization.Scripts.Runtime
             yield return WaitForRequestedLanguageIfNeeded();
 
             var targetLanguage = ResolveRequestedLanguageCandidate();
+            if (string.IsNullOrWhiteSpace(targetLanguage))
+            {
+                FineLocalizationLogger.LogWarning("[FineLocalization] Nenhum idioma runtime foi informado. Localization não será aplicada como en-us automaticamente.");
+                MarkReady(false);
+                OnDownloadLocalizationComplete?.Invoke(false);
+                OnAllSheetsDownloadedComplete?.Invoke(false);
+                yield break;
+            }
 
             LocalizationManager.ReloadAll(targetLanguage, false);
-            targetLanguage = LocalizationManager.Language;
+            if (!TryResolveAppliedLanguage(targetLanguage, out targetLanguage))
+            {
+                MarkReady(false);
+                OnDownloadLocalizationComplete?.Invoke(false);
+                OnAllSheetsDownloadedComplete?.Invoke(false);
+                yield break;
+            }
 
             var shouldLoadRemoteFont = ShouldLoadRemoteFont(targetLanguage);
             if (shouldLoadRemoteFont)
             {
-                yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage);
+                var fontLoaded = false;
+                yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage, success => fontLoaded = success);
+                if (!fontLoaded)
+                {
+                    ApplyDefaultLanguageAfterFontFailure();
+                    shouldLoadRemoteFont = false;
+                }
             }
 
             IgnoreNextRemoteFontLocalizationEvent();
@@ -239,18 +263,36 @@ namespace FineLocalization.Scripts.Runtime
             OnAllSheetsDownloadedComplete?.Invoke(true);
         }
 
-        private IEnumerator ApplyLocalizationWithOptionalRemoteFont(Dictionary<string, string> csvData)
+        private IEnumerator ApplyLocalizationWithOptionalRemoteFont(Dictionary<string, string> csvData, Action<bool> onComplete)
         {
             var targetLanguage = ResolveRequestedLanguageCandidate();
+            if (string.IsNullOrWhiteSpace(targetLanguage))
+            {
+                FineLocalizationLogger.LogWarning("[FineLocalization] Nenhum idioma runtime foi informado. Localization não será aplicada como en-us automaticamente.");
+                onComplete?.Invoke(false);
+                yield break;
+            }
 
             LocalizationManager.LoadFromCsvMap(csvData, targetLanguage, false);
-            targetLanguage = LocalizationManager.Language;
-            FineLocalizationLogger.Log(() => $"[FineLocalization] Runtime language resolved: requested='{ResolveRequestedLanguageCandidate()}', applied='{targetLanguage}'.");
+            var requestedLanguage = targetLanguage;
+            if (!TryResolveAppliedLanguage(requestedLanguage, out targetLanguage))
+            {
+                onComplete?.Invoke(false);
+                yield break;
+            }
+
+            FineLocalizationLogger.Log(() => $"[FineLocalization] Runtime language resolved: requested='{requestedLanguage}', applied='{targetLanguage}'.");
 
             var shouldLoadRemoteFont = ShouldLoadRemoteFont(targetLanguage);
             if (shouldLoadRemoteFont)
             {
-                yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage);
+                var fontLoaded = false;
+                yield return remoteFontBundleLoader.EnsureFontForLanguage(targetLanguage, success => fontLoaded = success);
+                if (!fontLoaded)
+                {
+                    ApplyDefaultLanguageAfterFontFailure();
+                    shouldLoadRemoteFont = false;
+                }
             }
 
             IgnoreNextRemoteFontLocalizationEvent();
@@ -258,6 +300,33 @@ namespace FineLocalization.Scripts.Runtime
 
             if (shouldLoadRemoteFont)
                 yield return remoteFontBundleLoader.RebuildCurrentTexts();
+
+            onComplete?.Invoke(true);
+        }
+
+        private static bool TryResolveAppliedLanguage(string requestedLanguage, out string appliedLanguage)
+        {
+            appliedLanguage = LocalizationManager.Language;
+
+            if (string.IsNullOrWhiteSpace(requestedLanguage))
+                return false;
+
+            if (!string.Equals(appliedLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(requestedLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            FineLocalizationLogger.LogWarning(
+                () => $"[FineLocalization] Idioma solicitado '{requestedLanguage}' não foi encontrado nos CSVs carregados. Não aplicando en-us automaticamente."
+            );
+            return false;
+        }
+
+        private static void ApplyDefaultLanguageAfterFontFailure()
+        {
+            FineLocalizationLogger.LogWarning("[FineLocalization] Falha ao carregar fonte remota. Aplicando en-us como fallback.");
+            LocalizationManager.ReloadAll(LocalizationManager.DefaultLanguage, false);
         }
 
         private bool ShouldLoadRemoteFont(string language)
@@ -281,9 +350,6 @@ namespace FineLocalization.Scripts.Runtime
 
             if (string.IsNullOrWhiteSpace(requestedLanguage))
                 requestedLanguage = TryResolveLanguageFromLaunchUrl();
-
-            if (string.IsNullOrWhiteSpace(requestedLanguage))
-                requestedLanguage = LocalizationManager.Language;
 
             return NormalizeLanguageCandidate(requestedLanguage);
         }
