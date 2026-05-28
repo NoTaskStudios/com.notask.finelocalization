@@ -126,7 +126,6 @@ namespace FineLocalization.Scripts.Runtime
         private readonly HashSet<TMP_FontAsset> _seenFonts = new();
         private readonly HashSet<TMP_FontAsset> _fontValidationStack = new();
         private bool _ignoreNextLocalizationChanged;
-        private int _preRenderRepairFrames;
 
         public static event Action<bool> OnDownloadRemoteFontComplete = _ => { };
         public static event Action<string, bool> OnRemoteFontDownloadComplete = (_, _) => { };
@@ -137,8 +136,6 @@ namespace FineLocalization.Scripts.Runtime
 
         private void OnEnable()
         {
-            Canvas.preWillRenderCanvases += RepairFallbacksBeforeCanvasRender;
-
             if (loadOnLocalizationChanged)
                 LocalizationManager.OnLocalizationChanged += EnsureCurrentLanguageFont;
 
@@ -157,21 +154,8 @@ namespace FineLocalization.Scripts.Runtime
 
         private void OnDisable()
         {
-            Canvas.preWillRenderCanvases -= RepairFallbacksBeforeCanvasRender;
-
             if (loadOnLocalizationChanged)
                 LocalizationManager.OnLocalizationChanged -= EnsureCurrentLanguageFont;
-        }
-
-        private void RepairFallbacksBeforeCanvasRender()
-        {
-            if (_preRenderRepairFrames <= 0)
-                return;
-
-            _preRenderRepairFrames--;
-            RepairGlobalTMPFallbacks();
-            RepairLoadedFontFallbackTrees();
-            ClearTMPFallbackMaterialCache();
         }
 
         public void EnsureCurrentLanguageFont()
@@ -420,7 +404,6 @@ namespace FineLocalization.Scripts.Runtime
             RepairGlobalTMPFallbacks();
             RepairLoadedFontFallbackTrees();
             ClearTMPFallbackMaterialCache();
-            _preRenderRepairFrames = 8;
             bundle.Unload(false);
             CompleteFontDownload(normalizedLanguage, true, onComplete, true);
         }
@@ -1186,27 +1169,13 @@ namespace FineLocalization.Scripts.Runtime
             try
             {
                 var type = Type.GetType("TMPro.TMP_MaterialManager, Unity.TextMeshPro");
-                if (type == null)
-                    return;
-
-                ClearStaticCollectionField(type, "m_fallbackMaterials");
-                ClearStaticCollectionField(type, "m_fallbackMaterialLookup");
-                ClearStaticCollectionField(type, "m_fallbackCleanupList");
-
-                var dirtyField = type.GetField("isFallbackListDirty", BindingFlags.Static | BindingFlags.NonPublic);
-                dirtyField?.SetValue(null, false);
+                var method = type?.GetMethod("ClearFallbackMaterials", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                method?.Invoke(null, null);
             }
             catch (Exception ex)
             {
-                FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Falha ao limpar cache TMP fallback material: {ex.GetType().Name}: {ex.Message}");
+                FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] ClearFallbackMaterials falhou: {ex.GetType().Name}: {ex.Message}");
             }
-        }
-
-        private static void ClearStaticCollectionField(Type ownerType, string fieldName)
-        {
-            var field = ownerType.GetField(fieldName, BindingFlags.Static | BindingFlags.NonPublic);
-            var collection = field?.GetValue(null);
-            collection?.GetType().GetMethod("Clear", Type.EmptyTypes)?.Invoke(collection, null);
         }
 
         private void RemoveConfiguredRemoteFallbacks(List<TMP_FontAsset> list, TMP_FontAsset preferredFallback)
