@@ -357,6 +357,12 @@ namespace FineLocalization.Scripts.Runtime
                 yield break;
             }
 
+            FineLocalizationLogger.Log(() =>
+                $"[RemoteFontBundleLoader] Font asset carregado: name='{fontAsset.name}' type={fontAsset.GetType().FullName} " +
+                $"atlas='{GetFontAtlasTexture(fontAsset)?.name ?? "<null>"}' material='{fontAsset.material?.name ?? "<null>"}' " +
+                $"bundleMaterial='{bundleMaterial?.name ?? "<null>"}'"
+            );
+
             if (!string.IsNullOrWhiteSpace(config.fontAssetName) && !fontAsset.name.Equals(config.fontAssetName, StringComparison.OrdinalIgnoreCase))
             {
                 FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] TMP_FontAsset encontrado como '{fontAsset.name}', mas o configurado é '{config.fontAssetName}'.");
@@ -1331,12 +1337,16 @@ namespace FineLocalization.Scripts.Runtime
                 atlasTexture.hideFlags |= HideFlags.DontUnloadUnusedAsset;
 
             var currentMaterial = fontAsset.material;
+            var shouldApplyRemoteMetrics = ShouldApplyRemoteFontMaterialFixes(fontAsset, atlasTexture);
             if (createRuntimeMaterialForBundleFonts &&
-                (preferredMaterial != null || IsConfiguredRemoteFont(fontAsset)) &&
+                shouldApplyRemoteMetrics &&
                 atlasTexture != null &&
                 !IsRuntimeOwnedMaterial(currentMaterial))
             {
-                var runtimeMaterial = CreateRuntimeMaterialFromLocalTemplate(fontAsset, atlasTexture);
+                var runtimeMaterial = CreateRuntimeMaterialFromTemplate(fontAsset, atlasTexture, preferredMaterial, "material do bundle");
+                if (runtimeMaterial == null)
+                    runtimeMaterial = CreateRuntimeMaterialFromLocalTemplate(fontAsset, atlasTexture);
+
                 if (runtimeMaterial != null)
                 {
                     fontAsset.material = runtimeMaterial;
@@ -1347,14 +1357,16 @@ namespace FineLocalization.Scripts.Runtime
             if (TryNormalizeMaterial(currentMaterial, atlasTexture))
             {
                 currentMaterial.hideFlags |= HideFlags.DontUnloadUnusedAsset;
-                ApplyFontAtlasSdfMetrics(currentMaterial, fontAsset);
+                if (shouldApplyRemoteMetrics)
+                    ApplyFontAtlasSdfMetrics(currentMaterial, fontAsset);
                 return;
             }
 
             if (TryNormalizeMaterial(preferredMaterial, atlasTexture))
             {
                 preferredMaterial.hideFlags |= HideFlags.DontUnloadUnusedAsset;
-                ApplyFontAtlasSdfMetrics(preferredMaterial, fontAsset);
+                if (shouldApplyRemoteMetrics)
+                    ApplyFontAtlasSdfMetrics(preferredMaterial, fontAsset);
                 // Keep a strong managed reference so the C# GC cannot collect this
                 // bundle-sourced material between the first load and subsequent rebuilds.
                 if (!_runtimeMaterials.Contains(preferredMaterial))
@@ -1383,7 +1395,8 @@ namespace FineLocalization.Scripts.Runtime
 
             // Overwrite the SDF decode parameters with this font's atlas metrics so the
             // cloned material (from a different font) does not carry the wrong GradientScale.
-            ApplyFontAtlasSdfMetrics(material, fontAsset);
+            if (shouldApplyRemoteMetrics)
+                ApplyFontAtlasSdfMetrics(material, fontAsset);
 
             _runtimeMaterials.Add(material);
             fontAsset.material = material;
@@ -1396,10 +1409,17 @@ namespace FineLocalization.Scripts.Runtime
             return material != null && _runtimeMaterials.Contains(material);
         }
 
-        private Material CreateRuntimeMaterialFromLocalTemplate(TMP_FontAsset fontAsset, Texture atlasTexture)
+        private bool ShouldApplyRemoteFontMaterialFixes(TMP_FontAsset fontAsset, Texture atlasTexture)
         {
-            var sourceMaterial = FindValidTMPMaterial(fontAsset);
-            if (sourceMaterial == null)
+            if (fontAsset == null || atlasTexture == null)
+                return false;
+
+            return IsConfiguredRemoteFont(fontAsset) || IsKnownRemoteFallbackFamily(fontAsset) || _runtimeFontAssets.ContainsValue(fontAsset);
+        }
+
+        private Material CreateRuntimeMaterialFromTemplate(TMP_FontAsset fontAsset, Texture atlasTexture, Material sourceMaterial, string sourceLabel)
+        {
+            if (fontAsset == null || atlasTexture == null || sourceMaterial == null || sourceMaterial.shader == null)
                 return null;
 
             var material = Instantiate(sourceMaterial);
@@ -1407,21 +1427,25 @@ namespace FineLocalization.Scripts.Runtime
             material.SetTexture(ShaderUtilities.ID_MainTex, atlasTexture);
             material.hideFlags |= HideFlags.DontUnloadUnusedAsset;
 
-            // Override the SDF decode parameters with the values from THIS font's atlas.
-            // Cloning from a local font (e.g. Righteous-Regular) copies that font's padding
-            // and atlas dimensions, which are almost certainly different from the remote CJK atlas.
-            // _GradientScale = atlasPadding + 1 matches the formula TMP uses when it bakes
-            // a font atlas, so glyphs decode at the exact SDF threshold they were encoded with.
             ApplyFontAtlasSdfMetrics(material, fontAsset);
 
             _runtimeMaterials.Add(material);
             ClearTMPFallbackMaterialCache();
 
             FineLocalizationLogger.Log(
-                () => $"[RemoteFontBundleLoader] Material runtime criado para '{fontAsset.name}' usando template local '{sourceMaterial.name}' e atlas '{atlasTexture.name}'."
+                () => $"[RemoteFontBundleLoader] Material runtime criado para '{fontAsset.name}' usando {sourceLabel} '{sourceMaterial.name}' e atlas '{atlasTexture.name}'."
             );
 
             return material;
+        }
+
+        private Material CreateRuntimeMaterialFromLocalTemplate(TMP_FontAsset fontAsset, Texture atlasTexture)
+        {
+            var sourceMaterial = FindValidTMPMaterial(fontAsset);
+            if (sourceMaterial == null)
+                return null;
+
+            return CreateRuntimeMaterialFromTemplate(fontAsset, atlasTexture, sourceMaterial, "template local");
         }
 
         /// <summary>

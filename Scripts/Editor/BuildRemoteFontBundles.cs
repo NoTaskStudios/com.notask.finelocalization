@@ -3,6 +3,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using TMPro;
 using UnityEditor;
 using UnityEngine;
 
@@ -88,7 +89,20 @@ namespace FineLocalization.EditorTools
                     continue;
                 }
 
-                var assetPaths = guids.Select(AssetDatabase.GUIDToAssetPath).ToArray();
+                var assetPaths = guids
+                    .Select(AssetDatabase.GUIDToAssetPath)
+                    .Where(IsValidTmpFontAssetPath)
+                    .ToArray();
+
+                if (assetPaths.Length == 0)
+                {
+                    Debug.LogWarning(
+                        $"[Fonts Bundle] Nenhum TMP_FontAsset .asset valido em '{folderPath}' (bundle '{bundleName}'). " +
+                        "Gere o asset pelo TextMeshPro Font Asset Creator e arraste a pasta que contem o .asset, nao apenas o .ttf/.otf."
+                    );
+                    continue;
+                }
+
                 var bundleFileName = EnsureBundleFileExtension(bundleName);
                 builds.Add(new AssetBundleBuild
                 {
@@ -132,6 +146,25 @@ namespace FineLocalization.EditorTools
                 return bundleName;
 
             return bundleName + BundleFileExtension;
+        }
+
+        private static bool IsValidTmpFontAssetPath(string assetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath))
+                return false;
+
+            if (!string.Equals(Path.GetExtension(assetPath), ".asset", System.StringComparison.OrdinalIgnoreCase))
+            {
+                Debug.LogWarning($"[Fonts Bundle] Ignorando '{assetPath}': TMP_FontAsset precisa ser um .asset, nao a fonte bruta.");
+                return false;
+            }
+
+            var fontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(assetPath);
+            if (fontAsset != null)
+                return true;
+
+            Debug.LogWarning($"[Fonts Bundle] Ignorando '{assetPath}': AssetDatabase nao carregou como TMP_FontAsset.");
+            return false;
         }
     }
 }

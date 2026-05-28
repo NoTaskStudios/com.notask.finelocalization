@@ -1,4 +1,6 @@
 #if UNITY_EDITOR
+using System.IO;
+using TMPro;
 using UnityEditor;
 using UnityEngine;
 
@@ -142,10 +144,24 @@ namespace FineLocalization.EditorTools
             }
 
             var guids = AssetDatabase.FindAssets("t:TMP_FontAsset", new[] { path });
-            if (guids.Length == 0)
+            var validCount = 0;
+            if (guids != null)
+            {
+                for (int i = 0; i < guids.Length; i++)
+                {
+                    var assetPath = AssetDatabase.GUIDToAssetPath(guids[i]);
+                    if (!string.Equals(Path.GetExtension(assetPath), ".asset", System.StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(assetPath) != null)
+                        validCount++;
+                }
+            }
+
+            if (validCount == 0)
                 EditorGUILayout.HelpBox($"Nenhum TMP_FontAsset em '{path}'.", MessageType.Warning);
             else
-                EditorGUILayout.LabelField($"✔ {guids.Length} TMP_FontAsset(s) em '{path}'", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField($"✔ {validCount} TMP_FontAsset .asset(s) em '{path}'", EditorStyles.miniLabel);
         }
 
         private void DrawBottomActions()
