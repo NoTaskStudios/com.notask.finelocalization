@@ -363,7 +363,7 @@ namespace FineLocalization.Scripts.Runtime
 
             FineLocalizationLogger.Log(() =>
                 $"[RemoteFontBundleLoader] Font asset carregado: name='{fontAsset.name}' type={fontAsset.GetType().FullName} " +
-                $"atlas='{GetFontAtlasTexture(fontAsset)?.name ?? "<null>"}' material='{fontAsset.material?.name ?? "<null>"}' " +
+                $"atlas='{GetFontAtlasTexture(fontAsset)?.name ?? "<null>"}' material='{SafeGetFontMaterial(fontAsset)?.name ?? "<null>"}' " +
                 $"bundleMaterial='{bundleMaterial?.name ?? "<null>"}'"
             );
 
@@ -386,8 +386,9 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             fontAsset.hideFlags |= HideFlags.DontUnloadUnusedAsset;
-            if (fontAsset.material != null)
-                fontAsset.material.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            var fontMaterial = SafeGetFontMaterial(fontAsset);
+            if (fontMaterial != null)
+                fontMaterial.hideFlags |= HideFlags.DontUnloadUnusedAsset;
             MarkAtlasTexturesDontUnload(fontAsset);
 
             _runtimeFontAssets[prefix] = fontAsset;
@@ -400,6 +401,9 @@ namespace FineLocalization.Scripts.Runtime
 
             FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Fonte registrada com sucesso: {DescribeFont(fontAsset)}");
 
+            RepairGlobalTMPFallbacks();
+            RepairLoadedFontFallbackTrees();
+            ClearTMPFallbackMaterialCache();
             bundle.Unload(false);
             CompleteFontDownload(normalizedLanguage, true, onComplete, true);
         }
@@ -714,7 +718,7 @@ namespace FineLocalization.Scripts.Runtime
                 return;
 
             var remoteFont = GetFirstRuntimeFontAsset();
-            var remoteMaterial = remoteFont != null ? remoteFont.material : null;
+            var remoteMaterial = SafeGetFontMaterial(remoteFont);
             var remoteAtlas = GetFontAtlasTexture(remoteFont);
             if (remoteMaterial == null || remoteAtlas == null)
                 return;
@@ -879,7 +883,15 @@ namespace FineLocalization.Scripts.Runtime
                 faceColor = "ERROR";
             }
 
-            return $"{material.name}/shader={(material.shader != null ? material.shader.name : "NULL")}/mainTex={mainTexName}/face={faceColor}/renderQueue={material.renderQueue}";
+            try
+            {
+                var shaderName = material.shader != null ? material.shader.name : "NULL";
+                return $"{material.name}/shader={shaderName}/mainTex={mainTexName}/face={faceColor}/renderQueue={material.renderQueue}";
+            }
+            catch
+            {
+                return "DESTROYED";
+            }
         }
 
         private static string GetMissingCharactersForFont(TMP_FontAsset font, string text)
@@ -1029,6 +1041,20 @@ namespace FineLocalization.Scripts.Runtime
                     );
                     globals.RemoveAt(i);
                 }
+            }
+        }
+
+        private void RepairLoadedFontFallbackTrees()
+        {
+            var fonts = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
+            for (int i = 0; i < fonts.Length; i++)
+            {
+                var font = fonts[i];
+                if (font == null)
+                    continue;
+
+                RepairFontMaterial(font, null);
+                SanitizeFallbackTree(font, null);
             }
         }
 
@@ -1294,7 +1320,7 @@ namespace FineLocalization.Scripts.Runtime
             if (atlasTexture != null)
                 atlasTexture.hideFlags |= HideFlags.DontUnloadUnusedAsset;
 
-            var currentMaterial = fontAsset.material;
+            var currentMaterial = SafeGetFontMaterial(fontAsset);
             var shouldApplyRemoteMetrics = ShouldApplyRemoteFontMaterialFixes(fontAsset, atlasTexture);
             if (createRuntimeMaterialForBundleFonts &&
                 shouldApplyRemoteMetrics &&
@@ -1322,15 +1348,23 @@ namespace FineLocalization.Scripts.Runtime
 
             if (TryNormalizeMaterial(preferredMaterial, atlasTexture))
             {
-                preferredMaterial.hideFlags |= HideFlags.DontUnloadUnusedAsset;
                 if (shouldApplyRemoteMetrics)
-                    ApplyFontAtlasSdfMetrics(preferredMaterial, fontAsset);
-                // Keep a strong managed reference so the C# GC cannot collect this
-                // bundle-sourced material between the first load and subsequent rebuilds.
-                if (!_runtimeMaterials.Contains(preferredMaterial))
-                    _runtimeMaterials.Add(preferredMaterial);
-                fontAsset.material = preferredMaterial;
-                return;
+                {
+                    var runtimeMaterial = CreateRuntimeMaterialFromTemplate(fontAsset, atlasTexture, preferredMaterial, "material do bundle");
+                    if (runtimeMaterial != null)
+                    {
+                        fontAsset.material = runtimeMaterial;
+                        return;
+                    }
+                }
+                else
+                {
+                    preferredMaterial.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+                    if (!_runtimeMaterials.Contains(preferredMaterial))
+                        _runtimeMaterials.Add(preferredMaterial);
+                    fontAsset.material = preferredMaterial;
+                    return;
+                }
             }
 
             if (atlasTexture == null)
@@ -1367,6 +1401,22 @@ namespace FineLocalization.Scripts.Runtime
             return material != null && _runtimeMaterials.Contains(material);
         }
 
+        private static Material SafeGetFontMaterial(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+                return null;
+
+            try
+            {
+                var material = fontAsset.material;
+                return material != null ? material : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private bool ShouldApplyRemoteFontMaterialFixes(TMP_FontAsset fontAsset, Texture atlasTexture)
         {
             if (fontAsset == null || atlasTexture == null)
@@ -1377,7 +1427,7 @@ namespace FineLocalization.Scripts.Runtime
 
         private Material CreateRuntimeMaterialFromTemplate(TMP_FontAsset fontAsset, Texture atlasTexture, Material sourceMaterial, string sourceLabel)
         {
-            if (fontAsset == null || atlasTexture == null || sourceMaterial == null || sourceMaterial.shader == null)
+            if (fontAsset == null || atlasTexture == null || !HasUsableShader(sourceMaterial))
                 return null;
 
             var material = Instantiate(sourceMaterial);
@@ -1498,13 +1548,13 @@ namespace FineLocalization.Scripts.Runtime
                     if (font == null || font == exclude)
                         continue;
 
-                    var material = font.material;
+                    var material = SafeGetFontMaterial(font);
                     if (material != null)
                         return material;
                 }
             }
 
-            var defaultMaterial = TMP_Settings.defaultFontAsset != null ? TMP_Settings.defaultFontAsset.material : null;
+            var defaultMaterial = SafeGetFontMaterial(TMP_Settings.defaultFontAsset);
             if (defaultMaterial != null)
                 return defaultMaterial;
 
@@ -1520,12 +1570,12 @@ namespace FineLocalization.Scripts.Runtime
             if (atlas == null && fontAsset.atlasTextures != null && fontAsset.atlasTextures.Length > 0)
                 atlas = fontAsset.atlasTextures[0];
 
-            return atlas != null && IsUsableMaterial(fontAsset.material, atlas);
+            return atlas != null && IsUsableMaterial(SafeGetFontMaterial(fontAsset), atlas);
         }
 
         private static bool TryNormalizeMaterial(Material material, Texture expectedAtlas)
         {
-            if (material == null || material.shader == null)
+            if (!HasUsableShader(material))
                 return false;
 
             if (expectedAtlas == null)
@@ -1547,23 +1597,33 @@ namespace FineLocalization.Scripts.Runtime
 
         private static bool IsUsableMaterial(Material material, Texture expectedAtlas)
         {
-            if (material == null)
+            if (!HasUsableShader(material))
                 return false;
 
-            if (material.shader == null)
-                return false;
-
-            Texture mainTex = null;
             try
             {
-                mainTex = material.GetTexture(ShaderUtilities.ID_MainTex);
+                var mainTex = material.GetTexture(ShaderUtilities.ID_MainTex);
+                return expectedAtlas == null ? mainTex != null : mainTex == expectedAtlas;
             }
             catch
             {
                 return false;
             }
+        }
 
-            return mainTex != null || expectedAtlas == null;
+        private static bool HasUsableShader(Material material)
+        {
+            if (material == null)
+                return false;
+
+            try
+            {
+                return material.shader != null;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static TMP_Text[] FindSceneTexts()
@@ -1706,7 +1766,7 @@ namespace FineLocalization.Scripts.Runtime
             if (font == null)
                 return "NULL";
 
-            var mat = font.material;
+            var mat = SafeGetFontMaterial(font);
             var atlas = GetFontAtlasTexture(font);
 
             string mainTexName = "NULL";
