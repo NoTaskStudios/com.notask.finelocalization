@@ -73,6 +73,9 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Para fontes vindas de AssetBundle, cria o material em runtime usando um material TMP local como template e o atlas remoto. Ajuda em WebGL quando o material do bundle nao desenha.")]
         [SerializeField] private bool createRuntimeMaterialForBundleFonts = true;
 
+        [Tooltip("Desliga TMP_Settings.matchMaterialPreset ao usar fonte remota. Evita MissingReferenceException dentro de TMP_MaterialManager.GetFallbackMaterial em TMP 3.x.")]
+        [SerializeField] private bool disableMaterialPresetMatchingForRemoteFonts = true;
+
         [Header("Safety Filters")]
         [Tooltip("Ignora fontes cujo nome contenha estes termos. Útil para evitar NotoSansJP antigo local quando o bundle usa NotoSansJP-used.")]
         [SerializeField] private List<string> ignoredFontNameContains = new() { "NotoSansJP" };
@@ -126,6 +129,8 @@ namespace FineLocalization.Scripts.Runtime
         private readonly HashSet<TMP_FontAsset> _seenFonts = new();
         private readonly HashSet<TMP_FontAsset> _fontValidationStack = new();
         private bool _ignoreNextLocalizationChanged;
+        private bool _savedMatchMaterialPreset;
+        private bool _changedMatchMaterialPreset;
 
         public static event Action<bool> OnDownloadRemoteFontComplete = _ => { };
         public static event Action<string, bool> OnRemoteFontDownloadComplete = (_, _) => { };
@@ -156,6 +161,8 @@ namespace FineLocalization.Scripts.Runtime
         {
             if (loadOnLocalizationChanged)
                 LocalizationManager.OnLocalizationChanged -= EnsureCurrentLanguageFont;
+
+            RestoreTMPMaterialPresetMatching();
         }
 
         public void EnsureCurrentLanguageFont()
@@ -372,6 +379,7 @@ namespace FineLocalization.Scripts.Runtime
                 FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] TMP_FontAsset encontrado como '{fontAsset.name}', mas o configurado é '{config.fontAssetName}'.");
             }
 
+            DisableTMPMaterialPresetMatchingForRemoteFont();
             RepairFontMaterial(fontAsset, bundleMaterial);
             TryReadFontAssetDefinition(fontAsset);
             SanitizeFallbackTree(fontAsset, fontAsset);
@@ -421,6 +429,48 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             onComplete?.Invoke(success);
+        }
+
+        private void DisableTMPMaterialPresetMatchingForRemoteFont()
+        {
+            if (!disableMaterialPresetMatchingForRemoteFonts || _changedMatchMaterialPreset)
+                return;
+
+            _savedMatchMaterialPreset = TMP_Settings.matchMaterialPreset;
+            if (!TrySetTMPMatchMaterialPreset(false))
+                return;
+
+            _changedMatchMaterialPreset = true;
+
+            FineLocalizationLogger.Log("[RemoteFontBundleLoader] TMP_Settings.matchMaterialPreset desativado para fonte remota.");
+        }
+
+        private void RestoreTMPMaterialPresetMatching()
+        {
+            if (!_changedMatchMaterialPreset)
+                return;
+
+            TrySetTMPMatchMaterialPreset(_savedMatchMaterialPreset);
+            _changedMatchMaterialPreset = false;
+        }
+
+        private static bool TrySetTMPMatchMaterialPreset(bool value)
+        {
+            try
+            {
+                var settings = TMP_Settings.instance;
+                var field = typeof(TMP_Settings).GetField("m_matchMaterialPreset", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (settings == null || field == null)
+                    return false;
+
+                field.SetValue(settings, value);
+                return TMP_Settings.matchMaterialPreset == value;
+            }
+            catch (Exception ex)
+            {
+                FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Falha ao alterar TMP matchMaterialPreset: {ex.GetType().Name}: {ex.Message}");
+                return false;
+            }
         }
 
         private void KeepRuntimeBundleAssetsAlive(UnityEngine.Object[] assets)
