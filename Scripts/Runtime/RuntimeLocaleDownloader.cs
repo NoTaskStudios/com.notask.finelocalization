@@ -325,6 +325,13 @@ namespace FineLocalization.Scripts.Runtime
                 yield break;
             }
 
+            LocalizationManager.ReloadAll(targetLanguage, false);
+            if (!TryResolveAppliedLanguage(targetLanguage, out targetLanguage))
+            {
+                CompleteDownload(false);
+                yield break;
+            }
+
             var needsRemoteFont = ShouldLoadRemoteFont(targetLanguage);
             var shouldLoadRemoteFont = needsRemoteFont && !IsRemoteFontPreloaded(targetLanguage);
             if (shouldLoadRemoteFont)
@@ -338,13 +345,6 @@ namespace FineLocalization.Scripts.Runtime
                     needsRemoteFont = false;
                     shouldLoadRemoteFont = false;
                 }
-            }
-
-            LocalizationManager.ReloadAll(targetLanguage, false);
-            if (!TryResolveAppliedLanguage(targetLanguage, out targetLanguage))
-            {
-                CompleteDownload(false);
-                yield break;
             }
 
             IgnoreNextRemoteFontLocalizationEvent();
@@ -372,7 +372,16 @@ namespace FineLocalization.Scripts.Runtime
                 yield break;
             }
 
+            LocalizationManager.LoadFromCsvMap(csvData, targetLanguage, false);
             var requestedLanguage = targetLanguage;
+            if (!TryResolveAppliedLanguage(requestedLanguage, out targetLanguage))
+            {
+                onComplete?.Invoke(false);
+                yield break;
+            }
+
+            FineLocalizationLogger.Log(() => $"[FineLocalization] Runtime language resolved: requested='{requestedLanguage}', applied='{targetLanguage}'.");
+
             var needsRemoteFont = ShouldLoadRemoteFont(targetLanguage);
             var shouldLoadRemoteFont = needsRemoteFont && !IsRemoteFontPreloaded(targetLanguage);
             if (shouldLoadRemoteFont)
@@ -387,16 +396,6 @@ namespace FineLocalization.Scripts.Runtime
                     shouldLoadRemoteFont = false;
                 }
             }
-
-            var languageToApply = targetLanguage;
-            LocalizationManager.LoadFromCsvMap(csvData, languageToApply, false);
-            if (!TryResolveAppliedLanguage(languageToApply, out targetLanguage))
-            {
-                onComplete?.Invoke(false);
-                yield break;
-            }
-
-            FineLocalizationLogger.Log(() => $"[FineLocalization] Runtime language resolved: requested='{requestedLanguage}', applied='{targetLanguage}'.");
 
             IgnoreNextRemoteFontLocalizationEvent();
             LocalizationManager.Refresh();
