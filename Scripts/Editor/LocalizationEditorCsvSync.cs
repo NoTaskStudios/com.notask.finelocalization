@@ -55,10 +55,13 @@ namespace FineLocalization.EditorTools
             "マミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶ" +
             "パピプペポファフィフェフォティディトゥドゥキャキュキョシャシュショチャチュチョニャニュニョヒャヒュヒョミャミュミョリャリュリョ";
 
-        // Caracteres japoneses/kanjis usados em mensagens montadas em runtime.
-        // Não altera download nem carregamento do AssetBundle; só reforça o TXT usado para gerar o TMP_FontAsset.
+        // Kanji/caracteres que aparecem em mensagens montadas em runtime ou textos curtos de UI.
+        // Mantém o bundle pequeno, mas evita o caso de o CSV/TXT do idioma não conter algum kanji crítico.
+        // U+65AD = 断, que apareceu no log do TMP como ausente em DisconnectPopupText.
         private const string JapaneseRuntimeCriticalCharacters =
-            "断接続切終了開始無効有効期限利用一時後試既中別検出違反操作許可内部題発生確認地域制現在場所情報残高不足入金認証完了重複登録結果待支払処理読込達自動競手超額最大調整低下回復応例外影響";
+            "断接続切終了行再試開始無効期限内部エラー問題発生" +
+            "詳細サポート確認制限地域法現在場所情報残高不足" +
+            "勝獲得倍率最大最小戻退履歴音楽遊び方公正性";
 
         private const string KoreanSafetyCharacters =
             "가나다라마바사아자차카타파하거너더러머버서어저처커터퍼허고노도로모보소오조초코토포호" +
@@ -500,11 +503,15 @@ namespace FineLocalization.EditorTools
                 var safeLanguage = SanitizeFileName(languagePair.Key.Trim().ToLowerInvariant());
                 var outputPath = Path.Combine(CharactersOutputFolder, $"{LanguageCharactersTxtPrefix}{safeLanguage}.txt");
 
+                var finalCharacters = languagePair.Value.Builder.ToString();
+
                 File.WriteAllText(
                     outputPath,
-                    languagePair.Value.Builder.ToString(),
+                    finalCharacters,
                     Utf8NoBom
                 );
+
+                LogLanguageCharacterSanity(languagePair.Key, outputPath, finalCharacters);
             }
 
             FineLocalizationLogger.Log(
@@ -522,9 +529,42 @@ namespace FineLocalization.EditorTools
                 return characterSet;
 
             characterSet = new CharacterSet();
+
+            // O TXT por idioma também precisa carregar caracteres comuns de runtime.
+            // Antes isso existia só no used_characters_all.txt; se o Font Asset Creator
+            // usar used_characters_ja-jp.txt diretamente, alguns símbolos/kanjis podem ficar fora.
+            AddAsciiPrintableCharacters(characterSet.SeenCharacters, characterSet.Builder);
+            AddTextCharacters(CommonRuntimeCharacters, characterSet.SeenCharacters, characterSet.Builder);
+            AddTextCharacters(CurrencyRuntimeCharacters, characterSet.SeenCharacters, characterSet.Builder);
             AddLanguageSafetyCharacters(language, characterSet.SeenCharacters, characterSet.Builder);
+
             languageCharacters.Add(language, characterSet);
             return characterSet;
+        }
+
+        private static void LogLanguageCharacterSanity(string language, string outputPath, string characters)
+        {
+            if (string.IsNullOrWhiteSpace(language))
+                return;
+
+            var normalized = language.Trim().Replace('_', '-').ToLowerInvariant();
+            if (!normalized.StartsWith("ja"))
+                return;
+
+            const char disconnectKanji = '\u65AD';
+            if (characters.IndexOf(disconnectKanji) >= 0)
+            {
+                FineLocalizationLogger.Log(
+                    $"[FineLocalization Editor] OK: {Path.GetFileName(outputPath)} contém '{disconnectKanji}' U+65AD. Total={characters.Length}"
+                );
+            }
+            else
+            {
+                FineLocalizationLogger.LogWarning(
+                    $"[FineLocalization Editor] ATENÇÃO: {Path.GetFileName(outputPath)} NÃO contém '{disconnectKanji}' U+65AD. " +
+                    "O TMP Font Asset japonês será gerado sem esse glyph."
+                );
+            }
         }
 
         private static void AddGlobalSafetyCharacters(
@@ -534,7 +574,6 @@ namespace FineLocalization.EditorTools
         {
             AddTextCharacters(CjkPunctuationCharacters, seenCharacters, builder);
             AddTextCharacters(JapaneseSafetyCharacters, seenCharacters, builder);
-            AddTextCharacters(JapaneseRuntimeCriticalCharacters, seenCharacters, builder);
             AddTextCharacters(KoreanSafetyCharacters, seenCharacters, builder);
             AddTextCharacters(ThaiSafetyCharacters, seenCharacters, builder);
         }
