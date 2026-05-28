@@ -39,8 +39,8 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Quando não há Initial Language nem lang na URL, aguarda SetRequestedLanguage antes de aplicar en-us.")]
         [SerializeField] private bool waitForExplicitRequestedLanguage = true;
 
-        [Tooltip("Tempo máximo de espera por SetRequestedLanguage antes de usar o idioma atual.")]
-        [SerializeField] private float requestedLanguageWaitTimeoutSeconds = 3f;
+        [Tooltip("Tempo máximo de espera por SetRequestedLanguage. Use 0 para aguardar indefinidamente.")]
+        [SerializeField] private float requestedLanguageWaitTimeoutSeconds = 0f;
 
         private static string PersistentCsvDir =>
             Path.Combine(Application.persistentDataPath, "FineLocalization/Resources/Localization");
@@ -55,6 +55,7 @@ namespace FineLocalization.Scripts.Runtime
 
         public static event Action<bool> OnDownloadLocalizationComplete = _ => { };
         public static event Action<bool> OnAllSheetsDownloadedComplete = _ => { };
+        private static event Action OnRequestedLanguageChanged = () => { };
 
         /// <summary>
         /// True once localization has been wired up at least once (either via Google Sheets
@@ -81,20 +82,54 @@ namespace FineLocalization.Scripts.Runtime
             RequestedLanguage = NormalizeLanguageCandidate(language);
             HasExplicitRequestedLanguage = !string.IsNullOrWhiteSpace(RequestedLanguage);
             FineLocalizationLogger.Log(() => $"[FineLocalization] Requested runtime language: '{RequestedLanguage}'.");
+            OnRequestedLanguageChanged();
         }
 
         private readonly Dictionary<string, string> _csvData = new();
+        private bool _downloadRoutineRunning;
+        private bool _downloadCompleted;
+        private string _activeRequestedLanguage;
+        private string _preloadedRemoteFontLanguage;
+
+        private void OnEnable()
+        {
+            OnRequestedLanguageChanged += HandleRequestedLanguageChanged;
+        }
+
+        private void OnDisable()
+        {
+            OnRequestedLanguageChanged -= HandleRequestedLanguageChanged;
+        }
 
         private void Start()
         {
             if (downloadOnStart)
             {
-                StartCoroutine(DownloadSheetsRuntime());
+                StartDownloadIfNeeded();
             }
             else
             {
                 StartCoroutine(NotifyLocalizationAlreadyReady());
             }
+        }
+
+        private void HandleRequestedLanguageChanged()
+        {
+            if (!downloadOnStart || _downloadRoutineRunning)
+                return;
+
+            if (_downloadCompleted && LastLocalizationSucceeded)
+                return;
+
+            StartDownloadIfNeeded();
+        }
+
+        private void StartDownloadIfNeeded()
+        {
+            if (_downloadRoutineRunning)
+                return;
+
+            StartCoroutine(DownloadSheetsRuntime());
         }
         /// <summary>
         /// Quando o usuário marcou <see cref="downloadOnStart"/> = false, ainda precisamos
@@ -114,16 +149,33 @@ namespace FineLocalization.Scripts.Runtime
         /// </summary>
         public void DownloadSheets()
         {
-            StartCoroutine(DownloadSheetsRuntime());
+            _downloadCompleted = false;
+            StartDownloadIfNeeded();
         }
 
         public IEnumerator DownloadSheetsRuntime()
         {
+            if (_downloadRoutineRunning)
+                yield break;
+
+            _downloadRoutineRunning = true;
+            _downloadCompleted = false;
+
             LocalizationManager.RuntimeCsvResolver = GetCsvContent;
             LocalizationManager.RuntimeCsvPersistenceHook = PersistCsvContent;
             _csvData.Clear();
 
             yield return WaitForRequestedLanguageIfNeeded();
+
+            _activeRequestedLanguage = ResolveRequestedLanguageCandidate();
+            if (string.IsNullOrWhiteSpace(_activeRequestedLanguage))
+            {
+                FineLocalizationLogger.LogWarning("[FineLocalization] Nenhum idioma runtime foi informado. Localization não será aplicada.");
+                CompleteDownload(false);
+                yield break;
+            }
+
+            yield return PreloadRemoteFontOrFallbackToDefault(_activeRequestedLanguage, language => _activeRequestedLanguage = language);
 
             if (ShouldUseBundledCsvs())
             {
@@ -142,8 +194,7 @@ namespace FineLocalization.Scripts.Runtime
                 {
                     FineLocalizationLogger.LogWarning("[FineLocalization] TableId ou Sheets estão vazios.");
 
-                    OnDownloadLocalizationComplete?.Invoke(false);
-                    OnAllSheetsDownloadedComplete?.Invoke(false);
+                    CompleteDownload(false);
                     yield break;
                 }
 
@@ -191,9 +242,7 @@ namespace FineLocalization.Scripts.Runtime
                 fullSuccess = applySuccess;
             }
 
-            MarkReady(fullSuccess);
-            OnDownloadLocalizationComplete?.Invoke(fullSuccess);
-            OnAllSheetsDownloadedComplete?.Invoke(fullSuccess);
+            CompleteDownload(fullSuccess);
         }
 
         private bool ShouldUseBundledCsvs()
@@ -217,26 +266,35 @@ namespace FineLocalization.Scripts.Runtime
             LocalizationManager.RuntimeCsvPersistenceHook = PersistCsvContent;
             yield return WaitForRequestedLanguageIfNeeded();
 
-            var targetLanguage = ResolveRequestedLanguageCandidate();
+            if (string.IsNullOrWhiteSpace(_activeRequestedLanguage))
+                _activeRequestedLanguage = ResolveRequestedLanguageCandidate();
+
+            if (string.IsNullOrWhiteSpace(_activeRequestedLanguage))
+            {
+                FineLocalizationLogger.LogWarning("[FineLocalization] Nenhum idioma runtime foi informado. Localization nao sera aplicada.");
+                CompleteDownload(false);
+                yield break;
+            }
+
+            yield return PreloadRemoteFontOrFallbackToDefault(_activeRequestedLanguage, language => _activeRequestedLanguage = language);
+
+            var targetLanguage = _activeRequestedLanguage;
             if (string.IsNullOrWhiteSpace(targetLanguage))
             {
                 FineLocalizationLogger.LogWarning("[FineLocalization] Nenhum idioma runtime foi informado. Localization não será aplicada como en-us automaticamente.");
-                MarkReady(false);
-                OnDownloadLocalizationComplete?.Invoke(false);
-                OnAllSheetsDownloadedComplete?.Invoke(false);
+                CompleteDownload(false);
                 yield break;
             }
 
             LocalizationManager.ReloadAll(targetLanguage, false);
             if (!TryResolveAppliedLanguage(targetLanguage, out targetLanguage))
             {
-                MarkReady(false);
-                OnDownloadLocalizationComplete?.Invoke(false);
-                OnAllSheetsDownloadedComplete?.Invoke(false);
+                CompleteDownload(false);
                 yield break;
             }
 
-            var shouldLoadRemoteFont = ShouldLoadRemoteFont(targetLanguage);
+            var needsRemoteFont = ShouldLoadRemoteFont(targetLanguage);
+            var shouldLoadRemoteFont = needsRemoteFont && !IsRemoteFontPreloaded(targetLanguage);
             if (shouldLoadRemoteFont)
             {
                 var fontLoaded = false;
@@ -244,6 +302,8 @@ namespace FineLocalization.Scripts.Runtime
                 if (!fontLoaded)
                 {
                     ApplyDefaultLanguageAfterFontFailure();
+                    targetLanguage = LocalizationManager.DefaultLanguage;
+                    needsRemoteFont = false;
                     shouldLoadRemoteFont = false;
                 }
             }
@@ -251,21 +311,21 @@ namespace FineLocalization.Scripts.Runtime
             IgnoreNextRemoteFontLocalizationEvent();
             LocalizationManager.Refresh();
 
-            if (shouldLoadRemoteFont)
+            if (needsRemoteFont && !string.Equals(targetLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase))
                 yield return remoteFontBundleLoader.RebuildCurrentTexts();
 
             FineLocalizationLogger.Log(
                 "[FineLocalization] Using bundled CSV TextAssets (downloadOnStart = false or WebGL CORS fallback)."
             );
 
-            MarkReady(true);
-            OnDownloadLocalizationComplete?.Invoke(true);
-            OnAllSheetsDownloadedComplete?.Invoke(true);
+            CompleteDownload(true);
         }
 
         private IEnumerator ApplyLocalizationWithOptionalRemoteFont(Dictionary<string, string> csvData, Action<bool> onComplete)
         {
-            var targetLanguage = ResolveRequestedLanguageCandidate();
+            var targetLanguage = string.IsNullOrWhiteSpace(_activeRequestedLanguage)
+                ? ResolveRequestedLanguageCandidate()
+                : _activeRequestedLanguage;
             if (string.IsNullOrWhiteSpace(targetLanguage))
             {
                 FineLocalizationLogger.LogWarning("[FineLocalization] Nenhum idioma runtime foi informado. Localization não será aplicada como en-us automaticamente.");
@@ -283,7 +343,8 @@ namespace FineLocalization.Scripts.Runtime
 
             FineLocalizationLogger.Log(() => $"[FineLocalization] Runtime language resolved: requested='{requestedLanguage}', applied='{targetLanguage}'.");
 
-            var shouldLoadRemoteFont = ShouldLoadRemoteFont(targetLanguage);
+            var needsRemoteFont = ShouldLoadRemoteFont(targetLanguage);
+            var shouldLoadRemoteFont = needsRemoteFont && !IsRemoteFontPreloaded(targetLanguage);
             if (shouldLoadRemoteFont)
             {
                 var fontLoaded = false;
@@ -291,6 +352,8 @@ namespace FineLocalization.Scripts.Runtime
                 if (!fontLoaded)
                 {
                     ApplyDefaultLanguageAfterFontFailure();
+                    targetLanguage = LocalizationManager.DefaultLanguage;
+                    needsRemoteFont = false;
                     shouldLoadRemoteFont = false;
                 }
             }
@@ -298,10 +361,52 @@ namespace FineLocalization.Scripts.Runtime
             IgnoreNextRemoteFontLocalizationEvent();
             LocalizationManager.Refresh();
 
-            if (shouldLoadRemoteFont)
+            if (needsRemoteFont && !string.Equals(targetLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase))
                 yield return remoteFontBundleLoader.RebuildCurrentTexts();
 
             onComplete?.Invoke(true);
+        }
+
+        private IEnumerator PreloadRemoteFontOrFallbackToDefault(string requestedLanguage, Action<string> onLanguageResolved)
+        {
+            var language = NormalizeLanguageCandidate(requestedLanguage);
+            if (string.IsNullOrWhiteSpace(language))
+            {
+                onLanguageResolved?.Invoke(language);
+                yield break;
+            }
+
+            if (IsRemoteFontPreloaded(language))
+            {
+                onLanguageResolved?.Invoke(language);
+                yield break;
+            }
+
+            if (!ShouldLoadRemoteFont(language))
+            {
+                onLanguageResolved?.Invoke(language);
+                yield break;
+            }
+
+            var fontLoaded = false;
+            yield return remoteFontBundleLoader.EnsureFontForLanguage(language, success => fontLoaded = success);
+
+            if (fontLoaded)
+            {
+                _preloadedRemoteFontLanguage = language;
+                onLanguageResolved?.Invoke(language);
+                yield break;
+            }
+
+            ApplyDefaultLanguageAfterFontFailure();
+            _preloadedRemoteFontLanguage = null;
+            onLanguageResolved?.Invoke(LocalizationManager.DefaultLanguage);
+        }
+
+        private bool IsRemoteFontPreloaded(string language)
+        {
+            return !string.IsNullOrWhiteSpace(language) &&
+                   string.Equals(_preloadedRemoteFontLanguage, NormalizeLanguageCandidate(language), StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryResolveAppliedLanguage(string requestedLanguage, out string appliedLanguage)
@@ -368,6 +473,14 @@ namespace FineLocalization.Scripts.Runtime
 
             var timeout = Mathf.Max(0f, requestedLanguageWaitTimeoutSeconds);
             var start = Time.realtimeSinceStartup;
+
+            if (timeout <= 0f)
+            {
+                while (!HasExplicitRequestedLanguage)
+                    yield return null;
+
+                yield break;
+            }
 
             while (!HasExplicitRequestedLanguage && Time.realtimeSinceStartup - start < timeout)
                 yield return null;
@@ -447,6 +560,17 @@ namespace FineLocalization.Scripts.Runtime
         {
             IsLocalizationReady = true;
             LastLocalizationSucceeded = success;
+        }
+
+        private void CompleteDownload(bool success)
+        {
+            MarkReady(success);
+            _downloadRoutineRunning = false;
+            _downloadCompleted = true;
+            _activeRequestedLanguage = null;
+            _preloadedRemoteFontLanguage = null;
+            OnDownloadLocalizationComplete?.Invoke(success);
+            OnAllSheetsDownloadedComplete?.Invoke(success);
         }
 
         private string BuildCsvUrl(string tableId, long sheetId)
