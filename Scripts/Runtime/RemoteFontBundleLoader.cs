@@ -73,8 +73,8 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Para fontes vindas de AssetBundle, cria o material em runtime usando um material TMP local como template e o atlas remoto. Ajuda em WebGL quando o material do bundle nao desenha.")]
         [SerializeField] private bool createRuntimeMaterialForBundleFonts = true;
 
-        [Tooltip("Quando um texto contem caracteres CJK cobertos pela fonte remota, aplica a fonte remota diretamente no TMP_Text para evitar material fallback invisivel.")]
-        [SerializeField] private bool applyRemoteFontDirectlyToCjkTexts = true;
+        [Tooltip("Diagnostico: quando um texto contem caracteres CJK cobertos pela fonte remota, aplica a fonte remota diretamente no TMP_Text. Deixe desligado para manter a fonte original e usar somente fallback TMP.")]
+        [SerializeField] private bool applyRemoteFontDirectlyToCjkTexts = false;
 
         [Header("Safety Filters")]
         [Tooltip("Ignora fontes cujo nome contenha estes termos. Útil para evitar NotoSansJP antigo local quando o bundle usa NotoSansJP-used.")]
