@@ -32,7 +32,6 @@ namespace FineLocalization.Scripts.Runtime
         private static readonly bool RemoveOtherRemoteLanguageFallbacks = true;
         private static readonly bool LoadOnLocalizationChanged = true;
         private static readonly bool LoadCurrentLanguageOnEnable = true;
-        private static readonly bool WaitForRuntimeLocalizationReadyOnEnable = true;
         private static readonly bool SkipDownloadForLatinScripts = true;
 
         [Serializable]
@@ -135,7 +134,7 @@ namespace FineLocalization.Scripts.Runtime
                 LocalizationManager.OnLocalizationChanged += EnsureCurrentLanguageFont;
 
             if (LoadCurrentLanguageOnEnable)
-                _enableEnsureCoroutine = StartCoroutine(EnsureCurrentLanguageFontWhenReady());
+                _enableEnsureCoroutine = StartCoroutine(EnsureCurrentLanguageFontAfterEnable());
         }
 
         private void OnDisable()
@@ -161,14 +160,9 @@ namespace FineLocalization.Scripts.Runtime
             StartCoroutine(EnsureFontForLanguage(LocalizationManager.Language));
         }
 
-        private IEnumerator EnsureCurrentLanguageFontWhenReady()
+        private IEnumerator EnsureCurrentLanguageFontAfterEnable()
         {
-            if (WaitForRuntimeLocalizationReadyOnEnable && HasRuntimeLocaleDownloaderInScene())
-            {
-                while (!RuntimeLocaleDownloader.IsLocalizationReady)
-                    yield return null;
-            }
-
+            yield return null;
             EnsureCurrentLanguageFont();
             _enableEnsureCoroutine = null;
         }

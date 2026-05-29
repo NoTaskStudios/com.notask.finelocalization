@@ -143,6 +143,7 @@ namespace FineLocalization.Scripts.Runtime
 
         private void OnEnable()
         {
+            EnsureRemoteFontBundleLoaderReference();
             OnRequestedLanguageChanged += HandleRequestedLanguageChanged;
             LocalizationManager.OnLocalizationChanged += HandleLocalizationLanguageChanged;
         }
@@ -505,9 +506,22 @@ namespace FineLocalization.Scripts.Runtime
 
         private bool ShouldLoadRemoteFont(string language)
         {
+            EnsureRemoteFontBundleLoaderReference();
             return loadRemoteFontBeforeApplyingLocalization &&
                    remoteFontBundleLoader != null &&
                    remoteFontBundleLoader.ShouldLoadRemoteFontForLanguage(language);
+        }
+
+        private void EnsureRemoteFontBundleLoaderReference()
+        {
+            if (remoteFontBundleLoader != null)
+                return;
+
+#if UNITY_2022_2_OR_NEWER
+            remoteFontBundleLoader = FindFirstObjectByType<RemoteFontBundleLoader>();
+#else
+            remoteFontBundleLoader = FindObjectOfType<RemoteFontBundleLoader>();
+#endif
         }
 
         private void EnsureLanguageCanRenderWithoutRemoteFont(ref string targetLanguage)
@@ -527,6 +541,8 @@ namespace FineLocalization.Scripts.Runtime
 
         private bool ShouldForceDefaultWithoutRemoteFont(string language)
         {
+            EnsureRemoteFontBundleLoaderReference();
+
             var normalizedLanguage = NormalizeLanguageCandidate(language);
             if (string.IsNullOrWhiteSpace(normalizedLanguage) ||
                 string.Equals(normalizedLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase) ||
