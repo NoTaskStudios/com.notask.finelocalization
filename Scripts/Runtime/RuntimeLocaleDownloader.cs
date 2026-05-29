@@ -140,6 +140,7 @@ namespace FineLocalization.Scripts.Runtime
         private bool _downloadCompleted;
         private string _activeRequestedLanguage;
         private string _preloadedRemoteFontLanguage;
+        private bool _remoteFontLoaderMissingLogged;
 
         private void OnEnable()
         {
@@ -514,14 +515,57 @@ namespace FineLocalization.Scripts.Runtime
 
         private void EnsureRemoteFontBundleLoaderReference()
         {
-            if (remoteFontBundleLoader != null)
-                return;
-
+            if (remoteFontBundleLoader == null)
+            {
+                // Inclui objetos INATIVOS na busca. Na versão antiga o RuntimeLocaleDownloader
+                // era quem achava e inicializava o loader; FindFirstObjectByType() padrão só
+                // retorna objetos ativos, então um loader inativo ficava invisível e nunca era
+                // comandado (nem se auto-inicializava via OnEnable).
 #if UNITY_2022_2_OR_NEWER
-            remoteFontBundleLoader = FindFirstObjectByType<RemoteFontBundleLoader>();
+                remoteFontBundleLoader = FindFirstObjectByType<RemoteFontBundleLoader>(FindObjectsInactive.Include);
 #else
-            remoteFontBundleLoader = FindObjectOfType<RemoteFontBundleLoader>();
+                remoteFontBundleLoader = FindObjectOfType<RemoteFontBundleLoader>(true);
 #endif
+            }
+
+            if (remoteFontBundleLoader == null)
+            {
+                if (!_remoteFontLoaderMissingLogged)
+                {
+                    _remoteFontLoaderMissingLogged = true;
+                    FineLocalizationLogger.LogWarning(
+                        "[FineLocalization] RemoteFontBundleLoader não encontrado na cena. Fontes remotas não serão baixadas. " +
+                        "Adicione o componente a um GameObject ou atribua a referência no inspector."
+                    );
+                }
+                return;
+            }
+
+            _remoteFontLoaderMissingLogged = false;
+
+            // O RuntimeLocaleDownloader é o responsável por inicializar e comandar o loader.
+            // Um loader inativo nunca roda OnEnable nem consegue iniciar coroutines
+            // (StartCoroutine lança exceção em GameObject inativo), então o download da fonte
+            // jamais aconteceria. Garantimos que ele esteja ativo antes de dirigi-lo.
+            var loaderGameObject = remoteFontBundleLoader.gameObject;
+            if (!loaderGameObject.activeSelf)
+            {
+                FineLocalizationLogger.Log(
+                    () => $"[FineLocalization] Ativando RemoteFontBundleLoader '{loaderGameObject.name}' (estava inativo) para inicializá-lo."
+                );
+                loaderGameObject.SetActive(true);
+            }
+
+            if (!remoteFontBundleLoader.enabled)
+                remoteFontBundleLoader.enabled = true;
+
+            if (!loaderGameObject.activeInHierarchy)
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[FineLocalization] RemoteFontBundleLoader '{loaderGameObject.name}' continua inativo na hierarquia " +
+                          "(algum GameObject pai está desativado). Ative o objeto pai para permitir o download da fonte."
+                );
+            }
         }
 
         private void EnsureLanguageCanRenderWithoutRemoteFont(ref string targetLanguage)
