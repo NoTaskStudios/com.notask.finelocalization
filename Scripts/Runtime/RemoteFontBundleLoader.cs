@@ -72,7 +72,7 @@ namespace FineLocalization.Scripts.Runtime
         [SerializeField] private List<string> forceRemoteFontPrefixes = new();
 
         [Header("Manual Test")]
-        [SerializeField] private string testLanguage = "ja-jp";
+        [SerializeField] private string testLanguage;
 
         private static readonly HashSet<string> DefaultLatinScriptPrefixes = new(StringComparer.OrdinalIgnoreCase)
         {
