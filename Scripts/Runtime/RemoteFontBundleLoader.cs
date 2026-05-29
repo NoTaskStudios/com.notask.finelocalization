@@ -31,7 +31,7 @@ namespace FineLocalization.Scripts.Runtime
         private static readonly bool AllowRemoteFontWhenIgnoredByName = true;
         private static readonly bool RemoveOtherRemoteLanguageFallbacks = true;
         private static readonly bool LoadOnLocalizationChanged = true;
-        private static readonly bool LoadCurrentLanguageOnEnable = false;
+        private static readonly bool LoadCurrentLanguageOnEnable = true;
         private static readonly bool WaitForRuntimeLocalizationReadyOnEnable = true;
         private static readonly bool SkipDownloadForLatinScripts = true;
 
@@ -95,6 +95,7 @@ namespace FineLocalization.Scripts.Runtime
         private readonly HashSet<TMP_FontAsset> _seenFonts = new();
         private readonly HashSet<TMP_FontAsset> _fontValidationStack = new();
         private bool _ignoreNextLocalizationChanged;
+        private Coroutine _enableEnsureCoroutine;
 
         public static event Action<bool> OnDownloadRemoteFontComplete = _ => { };
         public static event Action<string, bool> OnRemoteFontDownloadComplete = (_, _) => { };
@@ -134,20 +135,17 @@ namespace FineLocalization.Scripts.Runtime
                 LocalizationManager.OnLocalizationChanged += EnsureCurrentLanguageFont;
 
             if (LoadCurrentLanguageOnEnable)
-            {
-                if (WaitForRuntimeLocalizationReadyOnEnable &&
-                    !RuntimeLocaleDownloader.IsLocalizationReady &&
-                    HasRuntimeLocaleDownloaderInScene())
-                {
-                    return;
-                }
-
-                EnsureCurrentLanguageFont();
-            }
+                _enableEnsureCoroutine = StartCoroutine(EnsureCurrentLanguageFontWhenReady());
         }
 
         private void OnDisable()
         {
+            if (_enableEnsureCoroutine != null)
+            {
+                StopCoroutine(_enableEnsureCoroutine);
+                _enableEnsureCoroutine = null;
+            }
+
             if (LoadOnLocalizationChanged)
                 LocalizationManager.OnLocalizationChanged -= EnsureCurrentLanguageFont;
         }
@@ -161,6 +159,18 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             StartCoroutine(EnsureFontForLanguage(LocalizationManager.Language));
+        }
+
+        private IEnumerator EnsureCurrentLanguageFontWhenReady()
+        {
+            if (WaitForRuntimeLocalizationReadyOnEnable && HasRuntimeLocaleDownloaderInScene())
+            {
+                while (!RuntimeLocaleDownloader.IsLocalizationReady)
+                    yield return null;
+            }
+
+            EnsureCurrentLanguageFont();
+            _enableEnsureCoroutine = null;
         }
 
         public void IgnoreNextLocalizationChanged()
