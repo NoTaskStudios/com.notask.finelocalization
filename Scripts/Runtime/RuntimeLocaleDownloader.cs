@@ -172,8 +172,20 @@ namespace FineLocalization.Scripts.Runtime
             if (!downloadOnStart || _downloadRoutineRunning)
                 return;
 
+            // Suporta escolha de idioma EXTERNA a qualquer momento. Mesmo após um ciclo já
+            // concluído com sucesso, se o idioma pedido mudou em relação ao aplicado, reinicia
+            // o pipeline (CSV + fonte remota) para o novo idioma. Sem isso, uma segunda chamada
+            // de SetRequestedLanguage era ignorada e a troca externa não acontecia.
             if (_downloadCompleted && LastLocalizationSucceeded)
-                return;
+            {
+                var requested = ResolveRequestedLanguageCandidate();
+                var applied = NormalizeLanguageCandidate(LocalizationManager.Language);
+                if (string.IsNullOrWhiteSpace(requested) ||
+                    string.Equals(requested, applied, StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                _downloadCompleted = false;
+            }
 
             StartDownloadIfNeeded();
         }
@@ -640,6 +652,12 @@ namespace FineLocalization.Scripts.Runtime
 
             var timeout = Mathf.Max(0f, requestedLanguageWaitTimeoutSeconds);
             var start = Time.realtimeSinceStartup;
+
+            // Torna VISÍVEL que o download está parado aguardando a escolha de idioma externa.
+            // Sem isso, o downloader fica em silêncio no while e parece que "nada acontece".
+            FineLocalizationLogger.Log(() =>
+                $"[FineLocalization] Aguardando idioma externo (RuntimeLocaleDownloader.SetRequestedLanguage) " +
+                $"antes de baixar a localização. Timeout: {(timeout <= 0f ? "infinito" : timeout + "s")}.");
 
             if (timeout <= 0f)
             {
