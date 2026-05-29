@@ -311,7 +311,6 @@ Adicione o componente `RemoteFontBundleLoader` na cena e configure:
 - `bundleFileExtension` — mantenha `.ft` para os bundles gerados pelo builder
 - `bundles` — lista de configs (prefixo de idioma + nome do TMP_FontAsset dentro do bundle)
 - `mainFontAssets` — fontes principais que recebem o fallback
-- `addToGlobalTmpFallbacks` — adiciona ao TMP_Settings globalmente
 
 Com `baseBundleUrl = https://cdn.site.com/fonts/`, `languagePrefix = ja` e extensão `.ft`,
 o loader baixa `https://cdn.site.com/fonts/font_ja.ft`.
@@ -335,7 +334,6 @@ No Inspector do `RemoteFontBundleLoader`, há um header **Script Detection (Opti
 
 | Campo | O que faz |
 |-------|-----------|
-| `skipDownloadForLatinScripts` | Master toggle. **true** (default) → otimização ligada. **false** → todo idioma com config tenta baixar |
 | `extraLatinPrefixes` | Adicione prefixos extras a tratar como Latin (ex: `tlh`, `eo`) — não baixam bundle |
 | `forceRemoteFontPrefixes` | **Override**: força download mesmo para idiomas Latin. Use se sua fonte padrão é minimalista e não tem acentos completos (ex: `tr`, `vi`) |
 

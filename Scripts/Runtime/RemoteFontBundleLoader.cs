@@ -20,14 +20,26 @@ namespace FineLocalization.Scripts.Runtime
     /// </summary>
     public class RemoteFontBundleLoader : MonoBehaviour
     {
+        private static readonly bool AddToGlobalTmpFallbacks = true;
+        private static readonly bool AddToSceneTextFonts = true;
+        private static readonly bool AddToAllLoadedFonts = false;
+        private static readonly bool RebuildOnlyActiveTexts = true;
+        private static readonly bool AggressiveRebuild = false;
+        private static readonly bool LogCjkTextDiagnostics = true;
+        private const int MaxCjkTextDiagnosticsPerRebuild = 12;
+        private static readonly bool CreateRuntimeMaterialForBundleFonts = true;
+        private static readonly bool AllowRemoteFontWhenIgnoredByName = true;
+        private static readonly bool RemoveOtherRemoteLanguageFallbacks = true;
+        private static readonly bool LoadOnLocalizationChanged = true;
+        private static readonly bool LoadCurrentLanguageOnEnable = false;
+        private static readonly bool WaitForRuntimeLocalizationReadyOnEnable = true;
+        private static readonly bool SkipDownloadForLatinScripts = true;
+
         [Serializable]
         private class RemoteFontBundleConfig
         {
             [Tooltip("Prefixo de idioma usado para detectar quando carregar esta fonte. Ex: zh, zh-tw, ja, ko, th")]
             public string languagePrefix;
-
-            [Tooltip("Opcional. Se vazio, usa Base Bundle Url + languagePrefix.")]
-            public string bundleUrlOverride;
 
             [Tooltip("Nome exato do TMP_FontAsset dentro do bundle. Ex: NotoSansJP-used")]
             public string fontAssetName;
@@ -43,60 +55,17 @@ namespace FineLocalization.Scripts.Runtime
         [SerializeField] private List<RemoteFontBundleConfig> bundles = new();
 
         [Header("Fallback Target")]
-        [Tooltip("Se marcado, adiciona nos fallbacks globais do TMP Settings.")]
-        [SerializeField] private bool addToGlobalTmpFallbacks = true;
-
         [Tooltip("Fontes principais do projeto que devem receber o fallback remoto diretamente. Recomendo colocar aqui sua fonte base principal, não as fontes remotas CJK.")]
         [SerializeField] private List<TMP_FontAsset> mainFontAssets = new();
 
-        [Tooltip("Também adiciona o fallback nas fontes usadas pelos TMP_Text da cena.")]
-        [SerializeField] private bool addToSceneTextFonts = true;
-
-        [Tooltip("Desligado por padrão para WebGL/celulares. Se ligar, pode pegar fontes antigas/quebradas carregadas em memória e causar erro de material.")]
-        [SerializeField] private bool addToAllLoadedFonts = false;
-
-        [Tooltip("Força rebuild só nos textos ativos na hierarquia. Recomendado para WebGL mobile.")]
-        [SerializeField] private bool rebuildOnlyActiveTexts = true;
-
         [Tooltip("Quantidade de TMP_Text rebuildados por frame. Menor = menos travada em celular 2GB; maior = troca de idioma mais rápida.")]
         [SerializeField] private int rebuildBatchSize = 24;
-
-        [Tooltip("Último recurso. Evite em celular/WebGL: desativa/ativa GameObjects de texto.")]
-        [SerializeField] private bool aggressiveRebuild = false;
-
-        [Tooltip("Loga cobertura de glifos para textos CJK ativos durante o rebuild. Útil para diagnosticar fallback que foi adicionado mas não desenha.")]
-        [SerializeField] private bool logCjkTextDiagnostics = true;
-
-        [Tooltip("Limite de textos CJK diagnosticados por ciclo de rebuild.")]
-        [SerializeField] private int maxCjkTextDiagnosticsPerRebuild = 12;
-
-        [Tooltip("Para fontes vindas de AssetBundle, cria o material em runtime usando um material TMP local como template e o atlas remoto. Ajuda em WebGL quando o material do bundle nao desenha.")]
-        [SerializeField] private bool createRuntimeMaterialForBundleFonts = true;
 
         [Header("Safety Filters")]
         [Tooltip("Ignora fontes cujo nome contenha estes termos. Útil para evitar NotoSansJP antigo local quando o bundle usa NotoSansJP-used.")]
         [SerializeField] private List<string> ignoredFontNameContains = new() { "NotoSansJP" };
 
-        [Tooltip("Se marcado, não ignora a própria fonte remota mesmo que o nome bata com ignoredFontNameContains.")]
-        [SerializeField] private bool allowRemoteFontWhenIgnoredByName = true;
-
-        [Tooltip("Remove fallbacks remotos de outros idiomas configurados quando uma fonte nova for aplicada.")]
-        [SerializeField] private bool removeOtherRemoteLanguageFallbacks = true;
-
-        [Header("Localization Integration")]
-        [Tooltip("Carrega o bundle de fonte automaticamente quando LocalizationManager.Language mudar.")]
-        [SerializeField] private bool loadOnLocalizationChanged = true;
-
-        [Tooltip("Tenta carregar a fonte do idioma atual quando este componente for habilitado.")]
-        [SerializeField] private bool loadCurrentLanguageOnEnable = false;
-
-        [Tooltip("Evita carregar a fonte do idioma default antes do RuntimeLocaleDownloader resolver o idioma inicial.")]
-        [SerializeField] private bool waitForRuntimeLocalizationReadyOnEnable = true;
-
         [Header("Script Detection (Optimization)")]
-        [Tooltip("Quando marcado, idiomas latinos (en, pt, es, fr...) não baixam bundle remoto.")]
-        [SerializeField] private bool skipDownloadForLatinScripts = true;
-
         [Tooltip("Prefixos extras tratados como Latin. Use lowercase. Ex: eo")]
         [SerializeField] private List<string> extraLatinPrefixes = new();
 
@@ -161,12 +130,12 @@ namespace FineLocalization.Scripts.Runtime
 
         private void OnEnable()
         {
-            if (loadOnLocalizationChanged)
+            if (LoadOnLocalizationChanged)
                 LocalizationManager.OnLocalizationChanged += EnsureCurrentLanguageFont;
 
-            if (loadCurrentLanguageOnEnable)
+            if (LoadCurrentLanguageOnEnable)
             {
-                if (waitForRuntimeLocalizationReadyOnEnable &&
+                if (WaitForRuntimeLocalizationReadyOnEnable &&
                     !RuntimeLocaleDownloader.IsLocalizationReady &&
                     HasRuntimeLocaleDownloaderInScene())
                 {
@@ -179,7 +148,7 @@ namespace FineLocalization.Scripts.Runtime
 
         private void OnDisable()
         {
-            if (loadOnLocalizationChanged)
+            if (LoadOnLocalizationChanged)
                 LocalizationManager.OnLocalizationChanged -= EnsureCurrentLanguageFont;
         }
 
@@ -296,7 +265,7 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             var prefix = config.languagePrefix.Trim().ToLowerInvariant();
-            var bundleUrl = GetBundleUrl(config, prefix);
+            var bundleUrl = GetBundleUrl(prefix);
 
             FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Config encontrada. Idioma: {normalizedLanguage} | Prefix: {prefix} | URL: {bundleUrl} | FontAsset: {config.fontAssetName}");
 
@@ -488,7 +457,7 @@ namespace FineLocalization.Scripts.Runtime
 
             TMP_Text[] texts = FindSceneTexts();
 
-            if (addToSceneTextFonts)
+            if (AddToSceneTextFonts)
             {
                 for (int i = 0; i < texts.Length; i++)
                 {
@@ -500,10 +469,10 @@ namespace FineLocalization.Scripts.Runtime
                 }
             }
 
-            if (addToAllLoadedFonts)
+            if (AddToAllLoadedFonts)
             {
                 var allFonts = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
-                FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] addToAllLoadedFonts=true | TMP_FontAssets em memória: {allFonts.Length}");
+                FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] AddToAllLoadedFonts=true | TMP_FontAssets em memória: {allFonts.Length}");
 
                 for (int i = 0; i < allFonts.Length; i++)
                 {
@@ -536,7 +505,7 @@ namespace FineLocalization.Scripts.Runtime
             int cjkDiagnostics = 0;
             int batch = Mathf.Max(1, rebuildBatchSize);
 
-            FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] RebuildTextsBatched: analisando {texts.Length} TMP_Text(s), batch={batch}, onlyActive={rebuildOnlyActiveTexts}.");
+            FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] RebuildTextsBatched: analisando {texts.Length} TMP_Text(s), batch={batch}, onlyActive={RebuildOnlyActiveTexts}.");
 
             for (int i = 0; i < texts.Length; i++)
             {
@@ -586,7 +555,7 @@ namespace FineLocalization.Scripts.Runtime
 
             FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Rebuild concluído. Rebuild={rebuilt}, Skip={skipped}.");
 
-            if (!aggressiveRebuild)
+            if (!AggressiveRebuild)
                 yield break;
 
             yield return null;
@@ -613,7 +582,7 @@ namespace FineLocalization.Scripts.Runtime
             if (text == null || text.font == null)
                 return false;
 
-            if (rebuildOnlyActiveTexts && !text.gameObject.activeInHierarchy)
+            if (RebuildOnlyActiveTexts && !text.gameObject.activeInHierarchy)
                 return false;
 
             return true;
@@ -663,7 +632,7 @@ namespace FineLocalization.Scripts.Runtime
 
         private bool ShouldLogTextGlyphDiagnostics(TMP_Text text, int alreadyLogged)
         {
-            if (!logCjkTextDiagnostics || alreadyLogged >= Mathf.Max(0, maxCjkTextDiagnosticsPerRebuild))
+            if (!LogCjkTextDiagnostics || alreadyLogged >= Mathf.Max(0, MaxCjkTextDiagnosticsPerRebuild))
                 return false;
 
             if (text == null || string.IsNullOrEmpty(text.text))
@@ -981,7 +950,7 @@ namespace FineLocalization.Scripts.Runtime
 
         private void RegisterGlobalFallback(TMP_FontAsset fontAsset)
         {
-            if (!addToGlobalTmpFallbacks || fontAsset == null)
+            if (!AddToGlobalTmpFallbacks || fontAsset == null)
                 return;
 
             if (!IsUsableFontAsset(fontAsset))
@@ -1016,7 +985,7 @@ namespace FineLocalization.Scripts.Runtime
 
         private void RemoveRemoteFallbacksForOtherLanguages(TMP_FontAsset preferredFallback)
         {
-            if (!removeOtherRemoteLanguageFallbacks)
+            if (!RemoveOtherRemoteLanguageFallbacks)
                 return;
 
             RemoveConfiguredRemoteFallbacks(TMP_Settings.fallbackFontAssets, preferredFallback);
@@ -1286,7 +1255,7 @@ namespace FineLocalization.Scripts.Runtime
 
                 if (targetFont.name.IndexOf(token.Trim(), StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    if (allowRemoteFontWhenIgnoredByName && remoteFont != null && targetFont.name.Equals(remoteFont.name, StringComparison.OrdinalIgnoreCase))
+                    if (AllowRemoteFontWhenIgnoredByName && remoteFont != null && targetFont.name.Equals(remoteFont.name, StringComparison.OrdinalIgnoreCase))
                         return false;
 
                     return true;
@@ -1359,7 +1328,7 @@ namespace FineLocalization.Scripts.Runtime
 
             var currentMaterial = SafeGetFontMaterial(fontAsset);
             var shouldApplyRemoteMetrics = ShouldApplyRemoteFontMaterialFixes(fontAsset, atlasTexture);
-            if (createRuntimeMaterialForBundleFonts &&
+            if (CreateRuntimeMaterialForBundleFonts &&
                 shouldApplyRemoteMetrics &&
                 atlasTexture != null &&
                 !IsRuntimeOwnedMaterial(currentMaterial))
@@ -1768,7 +1737,7 @@ namespace FineLocalization.Scripts.Runtime
 
         private bool IsLatinScript(string normalizedLanguage)
         {
-            if (!skipDownloadForLatinScripts || string.IsNullOrEmpty(normalizedLanguage))
+            if (!SkipDownloadForLatinScripts || string.IsNullOrEmpty(normalizedLanguage))
                 return false;
 
             var rootPrefix = GetRootLanguagePrefix(normalizedLanguage);
@@ -1807,11 +1776,8 @@ namespace FineLocalization.Scripts.Runtime
             return false;
         }
 
-        private string GetBundleUrl(RemoteFontBundleConfig config, string prefix)
+        private string GetBundleUrl(string prefix)
         {
-            if (!string.IsNullOrWhiteSpace(config.bundleUrlOverride))
-                return config.bundleUrlOverride.Trim();
-
             if (string.IsNullOrWhiteSpace(baseBundleUrl))
                 return string.Empty;
 
