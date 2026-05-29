@@ -8,13 +8,18 @@ namespace FineLocalization.Runtime
         [SerializeField] private string key;
         [SerializeField] private TMP_Text text;
         [SerializeField] private bool shouldAlign;
+        public bool localizeOnEnable;
 
         private void Awake()
         {
             SetText();
             LocalizationManager.OnLocalizationChanged += SetText;
         }
-
+        private void OnEnable()
+        {
+            if (localizeOnEnable)
+                SetText();
+        }
         private void SetText()
         {
             if (!text) text = GetComponent<TMP_Text>();
