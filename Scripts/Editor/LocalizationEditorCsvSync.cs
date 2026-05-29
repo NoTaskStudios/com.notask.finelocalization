@@ -19,10 +19,10 @@ namespace FineLocalization.EditorTools
         private const string CharactersOutputFolder = "Assets/FineLocalization/Editor/GeneratedCharacters";
 
         private const string CharactersTxtFileName =
-            "used_characters_all.txt";
+            "characters_all.txt";
 
         private const string LanguageCharactersTxtPrefix =
-            "used_characters_";
+            "characters_";
 
         private const string LatinBaseCharactersTxtFileName =
             "characters_latin_base.txt";
@@ -51,6 +51,28 @@ namespace FineLocalization.EditorTools
 
         private const string CurrencyRuntimeCharacters =
             "€£¥¢₩₫₴₺";
+
+        private const string JapaneseRuntimeCharacters =
+            "\u3000\u3001\u3002\u30fb\u30fc\u300c\u300d\u300e\u300f" +
+            "\uff08\uff09\uff1a\uff1b\uff01\uff1f\uff03\uff05\uff0b\uff0d\uff0f\uff1d" +
+            "\u3041\u3042\u3043\u3044\u3045\u3046\u3047\u3048\u3049\u304a" +
+            "\u304b\u304c\u304d\u304e\u304f\u3050\u3051\u3052\u3053\u3054" +
+            "\u3055\u3056\u3057\u3058\u3059\u305a\u305b\u305c\u305d\u305e" +
+            "\u305f\u3060\u3061\u3062\u3063\u3064\u3065\u3066\u3067\u3068\u3069" +
+            "\u306a\u306b\u306c\u306d\u306e\u306f\u3070\u3071\u3072\u3073\u3074" +
+            "\u3075\u3076\u3077\u3078\u3079\u307a\u307b\u307c\u307d\u307e\u307f" +
+            "\u3080\u3081\u3082\u3083\u3084\u3085\u3086\u3087\u3088\u3089\u308a" +
+            "\u308b\u308c\u308d\u308e\u308f\u3090\u3091\u3092\u3093\u3094\u3095\u3096" +
+            "\u30a1\u30a2\u30a3\u30a4\u30a5\u30a6\u30a7\u30a8\u30a9\u30aa" +
+            "\u30ab\u30ac\u30ad\u30ae\u30af\u30b0\u30b1\u30b2\u30b3\u30b4" +
+            "\u30b5\u30b6\u30b7\u30b8\u30b9\u30ba\u30bb\u30bc\u30bd\u30be" +
+            "\u30bf\u30c0\u30c1\u30c2\u30c3\u30c4\u30c5\u30c6\u30c7\u30c8\u30c9" +
+            "\u30ca\u30cb\u30cc\u30cd\u30ce\u30cf\u30d0\u30d1\u30d2\u30d3\u30d4" +
+            "\u30d5\u30d6\u30d7\u30d8\u30d9\u30da\u30db\u30dc\u30dd\u30de\u30df" +
+            "\u30e0\u30e1\u30e2\u30e3\u30e4\u30e5\u30e6\u30e7\u30e8\u30e9\u30ea" +
+            "\u30eb\u30ec\u30ed\u30ee\u30ef\u30f0\u30f1\u30f2\u30f3\u30f4\u30f5\u30f6" +
+            "\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07" +
+            "\u5186\u500d\u56de\u6570\u65e5\u6708\u5e74\u6642\u5206\u79d2\u540d\u524d";
 
         /// <summary>
         /// Entry point do menu — abre o popup de escolha. Production é destacada
@@ -445,6 +467,7 @@ namespace FineLocalization.EditorTools
                         continue;
 
                     var characterSet = GetOrCreateCharacterSet(languageCharacters, language);
+                    AddLanguageRuntimeCharacters(language, characterSet.SeenCharacters, characterSet.Builder);
 
                     for (var lineIndex = 1; lineIndex < lines.Count; lineIndex++)
                     {
@@ -488,6 +511,20 @@ namespace FineLocalization.EditorTools
             characterSet = new CharacterSet();
             languageCharacters.Add(language, characterSet);
             return characterSet;
+        }
+
+        private static void AddLanguageRuntimeCharacters(
+            string language,
+            HashSet<char> seenCharacters,
+            StringBuilder builder
+        )
+        {
+            if (string.IsNullOrWhiteSpace(language))
+                return;
+
+            var normalizedLanguage = language.Trim().Replace('_', '-').ToLowerInvariant();
+            if (normalizedLanguage == "ja" || normalizedLanguage.StartsWith("ja-", StringComparison.OrdinalIgnoreCase))
+                AddTextCharacters(JapaneseRuntimeCharacters, seenCharacters, builder);
         }
 
         private static void AddAsciiPrintableCharacters(

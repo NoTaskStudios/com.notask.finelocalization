@@ -1,8 +1,10 @@
 #if UNITY_EDITOR
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
@@ -18,6 +20,8 @@ namespace FineLocalization.EditorTools
     {
         private const string DefaultOutputFolder = "AssetBundles/WebGL/Fonts";
         private const string BundleFileExtension = ".ft";
+        private const string GeneratedCharactersFolder = "Assets/FineLocalization/Editor/GeneratedCharacters";
+        private const string LanguageCharactersTxtPrefix = "characters_";
 
         [MenuItem("Tools/Fine Localization/WebGL Remote Fonts/Build Bundles Now", false, 61)]
         public static void BuildWebGlFontBundles()
@@ -103,6 +107,8 @@ namespace FineLocalization.EditorTools
                     continue;
                 }
 
+                ValidateFontAssetsContainExpectedCharacters(bundleName, assetPaths);
+
                 var bundleFileName = EnsureBundleFileExtension(bundleName);
                 builds.Add(new AssetBundleBuild
                 {
@@ -165,6 +171,116 @@ namespace FineLocalization.EditorTools
 
             Debug.LogWarning($"[Fonts Bundle] Ignorando '{assetPath}': AssetDatabase nao carregou como TMP_FontAsset.");
             return false;
+        }
+
+        private static void ValidateFontAssetsContainExpectedCharacters(string bundleName, string[] assetPaths)
+        {
+            var expectedCharacters = LoadExpectedCharactersForBundle(bundleName, out var sourceFiles);
+            if (string.IsNullOrEmpty(expectedCharacters))
+                return;
+
+            foreach (var assetPath in assetPaths)
+            {
+                var fontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(assetPath);
+                if (fontAsset == null)
+                    continue;
+
+                var missing = GetMissingCharacters(fontAsset, expectedCharacters, 48, out var missingCount);
+                if (missingCount == 0)
+                    continue;
+
+                Debug.LogWarning(
+                    $"[Fonts Bundle] '{fontAsset.name}' nao contem {missingCount} caractere(s) do TXT de caracteres " +
+                    $"usado para o bundle '{bundleName}'. Recrie o TMP_FontAsset com: {string.Join(", ", sourceFiles)}. " +
+                    $"Primeiros faltando: {missing}"
+                );
+            }
+        }
+
+        private static string LoadExpectedCharactersForBundle(string bundleName, out List<string> sourceFiles)
+        {
+            sourceFiles = new List<string>();
+
+            if (!Directory.Exists(GeneratedCharactersFolder))
+                return string.Empty;
+
+            var bundleLanguage = GetLanguageFromBundleName(bundleName);
+            if (string.IsNullOrEmpty(bundleLanguage))
+                return string.Empty;
+
+            var builder = new StringBuilder();
+            var seen = new HashSet<char>();
+
+            foreach (var path in Directory.GetFiles(GeneratedCharactersFolder, $"{LanguageCharactersTxtPrefix}*.txt", SearchOption.TopDirectoryOnly))
+            {
+                var fileLanguage = Path.GetFileNameWithoutExtension(path)
+                    .Substring(LanguageCharactersTxtPrefix.Length)
+                    .Trim()
+                    .ToLowerInvariant()
+                    .Replace('_', '-');
+
+                if (!LanguageMatchesBundle(fileLanguage, bundleLanguage))
+                    continue;
+
+                sourceFiles.Add(path);
+
+                var text = File.ReadAllText(path, Encoding.UTF8);
+                foreach (var character in text)
+                {
+                    if (char.IsControl(character) || !seen.Add(character))
+                        continue;
+
+                    builder.Append(character);
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private static string GetLanguageFromBundleName(string bundleName)
+        {
+            var value = Path.GetFileNameWithoutExtension(bundleName ?? string.Empty)
+                .Trim()
+                .ToLowerInvariant();
+
+            if (value.StartsWith("font_", StringComparison.OrdinalIgnoreCase))
+                value = value.Substring("font_".Length);
+
+            return value.Replace('_', '-');
+        }
+
+        private static bool LanguageMatchesBundle(string fileLanguage, string bundleLanguage)
+        {
+            if (string.IsNullOrEmpty(fileLanguage) || string.IsNullOrEmpty(bundleLanguage))
+                return false;
+
+            if (string.Equals(fileLanguage, bundleLanguage, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return fileLanguage.StartsWith(bundleLanguage + "-", StringComparison.OrdinalIgnoreCase) ||
+                   bundleLanguage.StartsWith(fileLanguage + "-", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GetMissingCharacters(TMP_FontAsset fontAsset, string expectedCharacters, int maxItems, out int missingCount)
+        {
+            missingCount = 0;
+            var samples = new List<string>();
+            var seen = new HashSet<char>();
+
+            foreach (var character in expectedCharacters)
+            {
+                if (char.IsControl(character) || char.IsWhiteSpace(character) || !seen.Add(character))
+                    continue;
+
+                if (fontAsset.HasCharacter(character))
+                    continue;
+
+                missingCount++;
+                if (samples.Count < maxItems)
+                    samples.Add($"{character}(U+{(int)character:X4})");
+            }
+
+            return samples.Count == 0 ? "<none>" : string.Join(", ", samples);
         }
     }
 }
