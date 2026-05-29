@@ -162,7 +162,16 @@ namespace FineLocalization.Scripts.Runtime
 
         private IEnumerator EnsureCurrentLanguageFontAfterEnable()
         {
-            yield return null;
+            if (HasRuntimeLocaleDownloaderInScene())
+            {
+                while (!RuntimeLocaleDownloader.IsLocalizationReady)
+                    yield return null;
+            }
+            else
+            {
+                yield return null;
+            }
+
             EnsureCurrentLanguageFont();
             _enableEnsureCoroutine = null;
         }
