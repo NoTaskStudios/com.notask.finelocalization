@@ -119,6 +119,8 @@ namespace FineLocalization.Editor
 
         private static void MakeLoggingToggle()
         {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Package Settings", EditorStyles.boldLabel);
             EditorGUI.BeginChangeCheck();
             var enableLogs = EditorGUILayout.ToggleLeft(
                 "Enable FineLocalization logs",
@@ -127,11 +129,14 @@ namespace FineLocalization.Editor
                 GUILayout.MaxWidth(MinColumnWidth + ButtonsColumnSizeFix)
             );
 
-            if (!EditorGUI.EndChangeCheck()) return;
+            if (EditorGUI.EndChangeCheck())
+            {
+                Settings.EnableLogs = enableLogs;
+                EditorUtility.SetDirty(Settings);
+                AssetDatabase.SaveAssets();
+            }
 
-            Settings.EnableLogs = enableLogs;
-            EditorUtility.SetDirty(Settings);
-            AssetDatabase.SaveAssets();
+            EditorGUILayout.EndVertical();
         }
         
         public void OnDestroy()

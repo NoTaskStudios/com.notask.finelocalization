@@ -16,7 +16,7 @@ namespace FineLocalization.EditorTools
         [System.Serializable]
         public class Entry
         {
-            [Tooltip("Nome do bundle gerado (vira o nome do arquivo). Ex: font_zh_cn, font_ja, font_ar.")]
+            [Tooltip("Nome do bundle gerado (vira o nome do arquivo). Ex: font_zh-cn, font_ja, font_ar.")]
             public string bundleName;
 
             [Tooltip("Pasta contendo os TMP_FontAsset desse idioma. Arraste a pasta do Project aqui.")]
@@ -46,7 +46,7 @@ namespace FineLocalization.EditorTools
             {
                 var path = AssetDatabase.GUIDToAssetPath(guids[0]);
                 var config = AssetDatabase.LoadAssetAtPath<RemoteFontBundleBuildConfig>(path);
-                if (EnsureDefaultRemoteFontFolders(config))
+                if (NormalizeLegacyBundleNames(config) | EnsureDefaultRemoteFontFolders(config))
                 {
                     EditorUtility.SetDirty(config);
                     AssetDatabase.SaveAssetIfDirty(config);
@@ -59,8 +59,8 @@ namespace FineLocalization.EditorTools
             EnsureFolder(DefaultRemoteFontsFolder);
 
             var instance = CreateInstance<RemoteFontBundleBuildConfig>();
-            instance.entries.Add(CreateDefaultEntry("font_zh_cn", "ChineseSimplified"));
-            instance.entries.Add(CreateDefaultEntry("font_zh_tw", "ChineseTraditional"));
+            instance.entries.Add(CreateDefaultEntry("font_zh-cn", "ChineseSimplified"));
+            instance.entries.Add(CreateDefaultEntry("font_zh-tw", "ChineseTraditional"));
             instance.entries.Add(CreateDefaultEntry("font_ja", "Japanese"));
             instance.entries.Add(CreateDefaultEntry("font_ko", "Korean"));
             instance.entries.Add(CreateDefaultEntry("font_th", "Thai"));
@@ -68,6 +68,34 @@ namespace FineLocalization.EditorTools
             AssetDatabase.CreateAsset(instance, DefaultAssetPath);
             AssetDatabase.SaveAssets();
             return instance;
+        }
+
+        private static bool NormalizeLegacyBundleNames(RemoteFontBundleBuildConfig config)
+        {
+            if (config == null || config.entries == null)
+                return false;
+
+            var changed = false;
+            foreach (var entry in config.entries)
+            {
+                if (entry == null || string.IsNullOrWhiteSpace(entry.bundleName))
+                    continue;
+
+                var normalized = entry.bundleName.Trim();
+                switch (normalized)
+                {
+                    case "font_zh_cn":
+                        entry.bundleName = "font_zh-cn";
+                        changed = true;
+                        break;
+                    case "font_zh_tw":
+                        entry.bundleName = "font_zh-tw";
+                        changed = true;
+                        break;
+                }
+            }
+
+            return changed;
         }
 
         private static bool EnsureDefaultRemoteFontFolders(RemoteFontBundleBuildConfig config)
@@ -115,8 +143,10 @@ namespace FineLocalization.EditorTools
         {
             switch (bundleName?.Trim())
             {
+                case "font_zh-cn":
                 case "font_zh_cn":
                     return "ChineseSimplified";
+                case "font_zh-tw":
                 case "font_zh_tw":
                     return "ChineseTraditional";
                 case "font_ja":

@@ -29,7 +29,8 @@ namespace FineLocalization.Editor
             CurrentSettingsInfo();
             DrawModeBanner();
             DrawHelp();
-            DrawGeneralFields();
+            DrawPackageSettings();
+            DrawLanguageSettings();
             DrawSourcesSection();
             DrawButtons();
             DrawWarnings();
@@ -79,22 +80,30 @@ namespace FineLocalization.Editor
         }
 
         // -------------------------------------------------------------------
-        // General fields
+        // Package and language fields
         // -------------------------------------------------------------------
 
-        private void DrawGeneralFields()
+        private void DrawPackageSettings()
         {
+            EditorGUILayout.LabelField("Package Settings", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(LocalizationSettings.EnableLogs)));
             EditorGUILayout.HelpBox(
                 "Disable for WebGL/release builds to suppress FineLocalization info/warning/error logs globally.",
                 MessageType.Info
             );
 
-            // Hidden the duplicated Mode dropdown — replaced by the banner button above.
-            // Users can still flip it via the banner; raw enum dropdown was redundant.
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(4);
+        }
 
+        private void DrawLanguageSettings()
+        {
+            EditorGUILayout.LabelField("Language Settings", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(LocalizationSettings.SaveFolder)));
             EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(LocalizationSettings.skip)));
+            EditorGUILayout.EndVertical();
         }
 
         // -------------------------------------------------------------------

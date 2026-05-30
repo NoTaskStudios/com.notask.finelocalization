@@ -62,7 +62,7 @@ namespace FineLocalization.Scripts.Runtime
 
         [Header("Safety Filters")]
         [Tooltip("Ignora fontes cujo nome contenha estes termos. Útil para evitar NotoSansJP antigo local quando o bundle usa NotoSansJP-used.")]
-        [SerializeField] private List<string> ignoredFontNameContains = new() { "NotoSansJP" };
+        [SerializeField] private List<string> ignoredFontNameContains = new();
 
         [Header("Script Detection (Optimization)")]
         [Tooltip("Prefixos extras tratados como Latin. Use lowercase. Ex: eo")]

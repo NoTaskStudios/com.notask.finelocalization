@@ -106,12 +106,13 @@ namespace FineLocalization.EditorTools
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
                 EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.PropertyField(bundleNameProp, new GUIContent("Bundle name"));
+                EditorGUILayout.PropertyField(bundleNameProp, new GUIContent("Bundle File Name"));
                 if (GUILayout.Button("✕", GUILayout.Width(28)))
                     removeIndex = i;
                 EditorGUILayout.EndHorizontal();
 
-                EditorGUILayout.PropertyField(folderProp, new GUIContent("Folder"));
+                EditorGUILayout.PropertyField(folderProp, new GUIContent("Remote TMP Font Folder"));
+                DrawBundlePreview(bundleNameProp.stringValue);
 
                 DrawEntryValidation(folderProp.objectReferenceValue);
 
@@ -126,6 +127,18 @@ namespace FineLocalization.EditorTools
 
             if (GUILayout.Button("+ Add entry", GUILayout.Height(24)))
                 entriesProp.arraySize++;
+        }
+
+        private static void DrawBundlePreview(string bundleName)
+        {
+            if (string.IsNullOrWhiteSpace(bundleName))
+                return;
+
+            var fileName = bundleName.EndsWith(".ft", System.StringComparison.OrdinalIgnoreCase)
+                ? bundleName
+                : bundleName + ".ft";
+
+            EditorGUILayout.LabelField("Generated File", fileName, EditorStyles.miniLabel);
         }
 
         private static void DrawEntryValidation(Object folderAsset)

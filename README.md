@@ -309,8 +309,8 @@ Como esses `.txt` ficam em pasta `Editor`, eles não entram na build.
 Adicione o componente `RemoteFontBundleLoader` na cena e configure:
 - `baseBundleUrl` — URL da pasta no CDN, ex: `https://cdn.site.com/fonts/`
 - `bundleFileExtension` — mantenha `.ft` para os bundles gerados pelo builder
-- `bundles` — lista de configs (prefixo de idioma + nome do TMP_FontAsset dentro do bundle)
-- `mainFontAssets` — fontes principais que recebem o fallback
+- `bundles` — mapeamentos remotos: prefixo de idioma + nome exato do TMP_FontAsset dentro do AssetBundle baixado
+- `mainFontAssets` — fontes locais/base que recebem a fonte remota como fallback
 
 Com `baseBundleUrl = https://cdn.site.com/fonts/`, `languagePrefix = ja` e extensão `.ft`,
 o loader baixa `https://cdn.site.com/fonts/font_ja.ft`.
