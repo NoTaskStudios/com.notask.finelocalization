@@ -1401,7 +1401,11 @@ namespace FineLocalization.Scripts.Runtime
             var sourceMaterial = FindValidTMPMaterial(fontAsset);
             if (sourceMaterial == null)
             {
-                FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Não encontrou material TMP base para reparar '{fontAsset.name}'.");
+                var runtimeMaterial = CreateRuntimeMaterialFromShader(fontAsset, atlasTexture);
+                if (runtimeMaterial != null)
+                    fontAsset.material = runtimeMaterial;
+                else
+                    FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Não encontrou material TMP base para reparar '{fontAsset.name}'.");
                 return;
             }
 
@@ -1475,10 +1479,41 @@ namespace FineLocalization.Scripts.Runtime
         private Material CreateRuntimeMaterialFromLocalTemplate(TMP_FontAsset fontAsset, Texture atlasTexture)
         {
             var sourceMaterial = FindValidTMPMaterial(fontAsset);
-            if (sourceMaterial == null)
+            if (sourceMaterial != null)
+                return CreateRuntimeMaterialFromTemplate(fontAsset, atlasTexture, sourceMaterial, "template local");
+
+            return CreateRuntimeMaterialFromShader(fontAsset, atlasTexture);
+        }
+
+        private Material CreateRuntimeMaterialFromShader(TMP_FontAsset fontAsset, Texture atlasTexture)
+        {
+            if (fontAsset == null || atlasTexture == null)
                 return null;
 
-            return CreateRuntimeMaterialFromTemplate(fontAsset, atlasTexture, sourceMaterial, "template local");
+            var shader = FindTmpDistanceFieldShader();
+            if (shader == null)
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[RemoteFontBundleLoader] Shader TMP Distance Field nao encontrado para reparar '{fontAsset.name}'."
+                );
+                return null;
+            }
+
+            var material = new Material(shader);
+            material.name = fontAsset.name + " Runtime Material";
+            material.SetTexture(ShaderUtilities.ID_MainTex, atlasTexture);
+            material.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+
+            ApplyFontAtlasSdfMetrics(material, fontAsset);
+
+            _runtimeMaterials.Add(material);
+            ClearTMPFallbackMaterialCache();
+
+            FineLocalizationLogger.Log(
+                () => $"[RemoteFontBundleLoader] Material runtime criado para '{fontAsset.name}' usando shader '{shader.name}' e atlas '{atlasTexture.name}'."
+            );
+
+            return material;
         }
 
         /// <summary>
@@ -1569,13 +1604,13 @@ namespace FineLocalization.Scripts.Runtime
                         continue;
 
                     var material = SafeGetFontMaterial(font);
-                    if (material != null)
+                    if (HasUsableShader(material))
                         return material;
                 }
             }
 
             var defaultMaterial = SafeGetFontMaterial(TMP_Settings.defaultFontAsset);
-            if (defaultMaterial != null)
+            if (HasUsableShader(defaultMaterial))
                 return defaultMaterial;
 
             return null;
@@ -1638,12 +1673,19 @@ namespace FineLocalization.Scripts.Runtime
 
             try
             {
-                return material.shader != null;
+                return material.shader != null &&
+                       material.shader.name.IndexOf("InternalErrorShader", StringComparison.OrdinalIgnoreCase) < 0;
             }
             catch
             {
                 return false;
             }
+        }
+
+        private static Shader FindTmpDistanceFieldShader()
+        {
+            return Shader.Find("TextMeshPro/Mobile/Distance Field") ??
+                   Shader.Find("TextMeshPro/Distance Field");
         }
 
         private static TMP_Text[] FindSceneTexts()

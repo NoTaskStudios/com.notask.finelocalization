@@ -209,7 +209,7 @@ namespace FineLocalization.EditorTools
                 }
             }
 
-            var material = fontAsset.material;
+            var material = EnsureFontMaterial(fontAsset);
             if (material != null)
             {
                 material.name = fontAsset.name + " Material";
@@ -228,6 +228,84 @@ namespace FineLocalization.EditorTools
             EditorUtility.SetDirty(fontAsset);
             AssetDatabase.SaveAssets();
             AssetDatabase.ImportAsset(assetPath);
+        }
+
+        private static Material EnsureFontMaterial(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+                return null;
+
+            var atlasTexture = GetFontAtlasTexture(fontAsset);
+            var material = fontAsset.material;
+
+            if (material == null)
+            {
+                var shader = FindTmpDistanceFieldShader();
+                if (shader == null)
+                {
+                    Debug.LogWarning($"[Font Bake] '{fontAsset.name}': shader TextMeshPro Distance Field nao encontrado. Material nao criado.");
+                    return null;
+                }
+
+                material = new Material(shader);
+                fontAsset.material = material;
+            }
+            else if (!HasUsableShader(material))
+            {
+                var shader = FindTmpDistanceFieldShader();
+                if (shader != null)
+                    material.shader = shader;
+                else
+                    Debug.LogWarning($"[Font Bake] '{fontAsset.name}': material esta com shader invalido e nao foi possivel localizar o shader TMP Distance Field.");
+            }
+
+            if (atlasTexture != null)
+                material.SetTexture(ShaderUtilities.ID_MainTex, atlasTexture);
+
+            ApplyFontAtlasSdfMetrics(material, fontAsset);
+            return material;
+        }
+
+        private static Texture GetFontAtlasTexture(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+                return null;
+
+            var atlasTexture = fontAsset.atlasTexture;
+            if (atlasTexture == null && fontAsset.atlasTextures != null && fontAsset.atlasTextures.Length > 0)
+                atlasTexture = fontAsset.atlasTextures[0];
+
+            return atlasTexture;
+        }
+
+        private static Shader FindTmpDistanceFieldShader()
+        {
+            return Shader.Find("TextMeshPro/Mobile/Distance Field") ??
+                   Shader.Find("TextMeshPro/Distance Field");
+        }
+
+        private static bool HasUsableShader(Material material)
+        {
+            if (material == null || material.shader == null)
+                return false;
+
+            return material.shader.name.IndexOf("InternalErrorShader", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private static void ApplyFontAtlasSdfMetrics(Material material, TMP_FontAsset fontAsset)
+        {
+            if (material == null || fontAsset == null)
+                return;
+
+            SetMaterialFloatIfPresent(material, "_TextureWidth", fontAsset.atlasWidth);
+            SetMaterialFloatIfPresent(material, "_TextureHeight", fontAsset.atlasHeight);
+            SetMaterialFloatIfPresent(material, "_GradientScale", fontAsset.atlasPadding + 1);
+        }
+
+        private static void SetMaterialFloatIfPresent(Material material, string propertyName, float value)
+        {
+            if (material != null && material.HasProperty(propertyName) && value > 0f)
+                material.SetFloat(propertyName, value);
         }
 
         private static void ResolveTarget(string folderPath, Font sourceFont, out string assetPath, out string assetName)

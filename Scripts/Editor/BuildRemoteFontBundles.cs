@@ -19,32 +19,49 @@ namespace FineLocalization.EditorTools
     public static class BuildRemoteFontBundles
     {
         private const string DefaultOutputFolder = "AssetBundles/WebGL/Fonts";
+        private const string DefaultGlobalOutputFolder = "AssetBundles/WebGL/GlobalFonts";
         private const string BundleFileExtension = ".ft";
         private const string GeneratedCharactersFolder = "Assets/FineLocalization/Editor/GeneratedCharacters";
         private const string LanguageCharactersTxtPrefix = "characters_";
 
+        private enum BuildOutputKind
+        {
+            PerGame,
+            Global
+        }
+
         [MenuItem("Tools/Fine Localization/WebGL Remote Fonts/Build Bundles Now", false, 61)]
         public static void BuildWebGlFontBundles()
         {
+            BuildWebGlFontBundles(BuildOutputKind.PerGame);
+        }
+
+        [MenuItem("Tools/Fine Localization/WebGL Remote Fonts/Global/Build Global Bundles Now", false, 63)]
+        public static void BuildWebGlGlobalFontBundles()
+        {
+            BuildWebGlFontBundles(BuildOutputKind.Global);
+        }
+
+        private static void BuildWebGlFontBundles(BuildOutputKind outputKind)
+        {
             var config = RemoteFontBundleBuildConfig.GetOrCreate();
+            var logPrefix = outputKind == BuildOutputKind.Global ? "[Global Fonts Bundle]" : "[Fonts Bundle]";
             if (config == null)
             {
-                Debug.LogError("[Fonts Bundle] RemoteFontBundleBuildConfig nao pôde ser carregado/criado.");
+                Debug.LogError($"{logPrefix} RemoteFontBundleBuildConfig nao pôde ser carregado/criado.");
                 return;
             }
 
             if (config.entries == null || config.entries.Count == 0)
             {
                 Debug.LogWarning(
-                    "[Fonts Bundle] Nenhuma entry configurada. Abra " +
+                    $"{logPrefix} Nenhuma entry configurada. Abra " +
                     "Tools/Fine Localization/WebGL Remote Fonts/Open Bundle Builder Window e adicione idiomas."
                 );
                 return;
             }
 
-            var output = string.IsNullOrWhiteSpace(config.outputFolder)
-                ? DefaultOutputFolder
-                : config.outputFolder;
+            var output = GetOutputFolder(config, outputKind);
 
             if (!Directory.Exists(output))
                 Directory.CreateDirectory(output);
@@ -59,19 +76,19 @@ namespace FineLocalization.EditorTools
                 var bundleName = entry.bundleName?.Trim();
                 if (string.IsNullOrEmpty(bundleName))
                 {
-                    Debug.LogWarning("[Fonts Bundle] Entry com bundleName vazio — ignorada.");
+                    Debug.LogWarning($"{logPrefix} Entry com bundleName vazio — ignorada.");
                     continue;
                 }
 
                 if (!seenNames.Add(bundleName))
                 {
-                    Debug.LogWarning($"[Fonts Bundle] Bundle name duplicado '{bundleName}' — ignorado (mantém o primeiro).");
+                    Debug.LogWarning($"{logPrefix} Bundle name duplicado '{bundleName}' — ignorado (mantém o primeiro).");
                     continue;
                 }
 
                 if (entry.folder == null)
                 {
-                    Debug.LogWarning($"[Fonts Bundle] Entry '{bundleName}' sem pasta atribuída — ignorada.");
+                    Debug.LogWarning($"{logPrefix} Entry '{bundleName}' sem pasta atribuída — ignorada.");
                     continue;
                 }
 
@@ -79,7 +96,7 @@ namespace FineLocalization.EditorTools
                 if (!AssetDatabase.IsValidFolder(folderPath))
                 {
                     Debug.LogWarning(
-                        $"[Fonts Bundle] '{bundleName}' aponta para um asset que não é pasta: {folderPath}"
+                        $"{logPrefix} '{bundleName}' aponta para um asset que não é pasta: {folderPath}"
                     );
                     continue;
                 }
@@ -88,26 +105,26 @@ namespace FineLocalization.EditorTools
                 if (guids == null || guids.Length == 0)
                 {
                     Debug.LogWarning(
-                        $"[Fonts Bundle] Nenhum TMP_FontAsset em '{folderPath}' (bundle '{bundleName}')."
+                        $"{logPrefix} Nenhum TMP_FontAsset em '{folderPath}' (bundle '{bundleName}')."
                     );
                     continue;
                 }
 
                 var assetPaths = guids
                     .Select(AssetDatabase.GUIDToAssetPath)
-                    .Where(IsValidTmpFontAssetPath)
+                    .Where(assetPath => IsValidTmpFontAssetPath(assetPath, logPrefix))
                     .ToArray();
 
                 if (assetPaths.Length == 0)
                 {
                     Debug.LogWarning(
-                        $"[Fonts Bundle] Nenhum TMP_FontAsset .asset valido em '{folderPath}' (bundle '{bundleName}'). " +
+                        $"{logPrefix} Nenhum TMP_FontAsset .asset valido em '{folderPath}' (bundle '{bundleName}'). " +
                         "Gere o asset pelo TextMeshPro Font Asset Creator e arraste a pasta que contem o .asset, nao apenas o .ttf/.otf."
                     );
                     continue;
                 }
 
-                ValidateFontAssetsContainExpectedCharacters(bundleName, assetPaths);
+                ValidateFontAssetsContainExpectedCharacters(bundleName, assetPaths, logPrefix);
 
                 var bundleFileName = EnsureBundleFileExtension(bundleName);
                 builds.Add(new AssetBundleBuild
@@ -116,12 +133,12 @@ namespace FineLocalization.EditorTools
                     assetNames = assetPaths
                 });
 
-                Debug.Log($"[Fonts Bundle] '{bundleFileName}' → {assetPaths.Length} asset(s)");
+                Debug.Log($"{logPrefix} '{bundleFileName}' → {assetPaths.Length} asset(s)");
             }
 
             if (builds.Count == 0)
             {
-                Debug.LogWarning("[Fonts Bundle] Nenhum bundle elegível para empacotar.");
+                Debug.LogWarning($"{logPrefix} Nenhum bundle elegível para empacotar.");
                 return;
             }
 
@@ -134,15 +151,29 @@ namespace FineLocalization.EditorTools
 
             if (manifest == null)
             {
-                Debug.LogError("[Fonts Bundle] Falha ao gerar AssetBundles.");
+                Debug.LogError($"{logPrefix} Falha ao gerar AssetBundles.");
                 return;
             }
 
             Debug.Log(
-                $"[Fonts Bundle] OK — {builds.Count} bundle(s) gerados em:\n{Path.GetFullPath(output)}"
+                $"{logPrefix} OK — {builds.Count} bundle(s) gerados em:\n{Path.GetFullPath(output)}"
             );
 
             AssetDatabase.Refresh();
+        }
+
+        private static string GetOutputFolder(RemoteFontBundleBuildConfig config, BuildOutputKind outputKind)
+        {
+            if (outputKind == BuildOutputKind.Global)
+            {
+                return string.IsNullOrWhiteSpace(config.globalOutputFolder)
+                    ? DefaultGlobalOutputFolder
+                    : config.globalOutputFolder;
+            }
+
+            return string.IsNullOrWhiteSpace(config.outputFolder)
+                ? DefaultOutputFolder
+                : config.outputFolder;
         }
 
         private static string EnsureBundleFileExtension(string bundleName)
@@ -154,14 +185,14 @@ namespace FineLocalization.EditorTools
             return bundleName + BundleFileExtension;
         }
 
-        private static bool IsValidTmpFontAssetPath(string assetPath)
+        private static bool IsValidTmpFontAssetPath(string assetPath, string logPrefix)
         {
             if (string.IsNullOrEmpty(assetPath))
                 return false;
 
             if (!string.Equals(Path.GetExtension(assetPath), ".asset", System.StringComparison.OrdinalIgnoreCase))
             {
-                Debug.LogWarning($"[Fonts Bundle] Ignorando '{assetPath}': TMP_FontAsset precisa ser um .asset, nao a fonte bruta.");
+                Debug.LogWarning($"{logPrefix} Ignorando '{assetPath}': TMP_FontAsset precisa ser um .asset, nao a fonte bruta.");
                 return false;
             }
 
@@ -169,11 +200,11 @@ namespace FineLocalization.EditorTools
             if (fontAsset != null)
                 return true;
 
-            Debug.LogWarning($"[Fonts Bundle] Ignorando '{assetPath}': AssetDatabase nao carregou como TMP_FontAsset.");
+            Debug.LogWarning($"{logPrefix} Ignorando '{assetPath}': AssetDatabase nao carregou como TMP_FontAsset.");
             return false;
         }
 
-        private static void ValidateFontAssetsContainExpectedCharacters(string bundleName, string[] assetPaths)
+        private static void ValidateFontAssetsContainExpectedCharacters(string bundleName, string[] assetPaths, string logPrefix)
         {
             var expectedCharacters = LoadExpectedCharactersForBundle(bundleName, out var sourceFiles);
             if (string.IsNullOrEmpty(expectedCharacters))
@@ -190,7 +221,7 @@ namespace FineLocalization.EditorTools
                     continue;
 
                 Debug.LogWarning(
-                    $"[Fonts Bundle] '{fontAsset.name}' nao contem {missingCount} caractere(s) do TXT de caracteres " +
+                    $"{logPrefix} '{fontAsset.name}' nao contem {missingCount} caractere(s) do TXT de caracteres " +
                     $"usado para o bundle '{bundleName}'. Recrie o TMP_FontAsset com: {string.Join(", ", sourceFiles)}. " +
                     $"Primeiros faltando: {missing}"
                 );

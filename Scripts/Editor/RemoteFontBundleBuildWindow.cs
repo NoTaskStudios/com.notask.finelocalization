@@ -70,7 +70,7 @@ namespace FineLocalization.EditorTools
                 "Cada entry vira um AssetBundle separado para WebGL.\n" +
                 "1) Dê um nome ao bundle (ex: font_ar, font_he, font_vi).\n" +
                 "2) Arraste a pasta com o(s) TMP_FontAsset desse idioma.\n" +
-                "3) Clique em Build WebGL Bundles.\n\n" +
+                "3) Clique em Build Game Bundles ou Build Global Bundles.\n\n" +
                 "Adicione/remova quantos idiomas precisar — totalmente dinâmico.",
                 MessageType.Info
             );
@@ -85,7 +85,10 @@ namespace FineLocalization.EditorTools
         private void DrawOutputFolder()
         {
             var outputProp = _serializedConfig.FindProperty(nameof(RemoteFontBundleBuildConfig.outputFolder));
-            EditorGUILayout.PropertyField(outputProp, new GUIContent("Output folder"));
+            EditorGUILayout.PropertyField(outputProp, new GUIContent("Output folder (per-game)"));
+
+            var globalOutputProp = _serializedConfig.FindProperty(nameof(RemoteFontBundleBuildConfig.globalOutputFolder));
+            EditorGUILayout.PropertyField(globalOutputProp, new GUIContent("Global output folder"));
             EditorGUILayout.Space(6);
         }
 
@@ -227,11 +230,19 @@ namespace FineLocalization.EditorTools
             }
 
             GUI.backgroundColor = new Color(0.55f, 0.85f, 1f);
-            if (GUILayout.Button("▶ Build WebGL Bundles", GUILayout.Height(28)))
+            if (GUILayout.Button("▶ Build Game Bundles", GUILayout.Height(28)))
             {
                 EditorUtility.SetDirty(_config);
                 AssetDatabase.SaveAssetIfDirty(_config);
                 BuildRemoteFontBundles.BuildWebGlFontBundles();
+            }
+
+            GUI.backgroundColor = new Color(0.55f, 0.75f, 1f);
+            if (GUILayout.Button("▶ Build Global Bundles", GUILayout.Height(28)))
+            {
+                EditorUtility.SetDirty(_config);
+                AssetDatabase.SaveAssetIfDirty(_config);
+                BuildRemoteFontBundles.BuildWebGlGlobalFontBundles();
             }
 
             GUI.backgroundColor = prevBg;

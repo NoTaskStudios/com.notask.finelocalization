@@ -69,7 +69,10 @@ Tools/Fine Localization/
 │
 ├── WebGL Remote Fonts/
 │   ├── Open Bundle Builder Window
-│   └── Build Bundles Now
+│   ├── Generate Font Assets From Characters
+│   ├── Build Bundles Now
+│   └── Global/
+│       └── Build Global Bundles Now
 │
 ├── Migrate Legacy Components             ← migra componentes do pacote antigo
 ├── Reset Settings to Defaults
@@ -289,8 +292,10 @@ Idiomas com **muitos glyphs** (chinês, japonês, coreano, tailandês, árabe, h
    - Defina **Bundle name** sem extensão (ex: `font_ar`, `font_he`, `font_vi`)
    - Arraste a **pasta** que contém os `TMP_FontAsset` desse idioma
    - A janela valida e mostra `✔ N TMP_FontAsset(s) em '...'`
-4. Clique em **▶ Build WebGL Bundles**.
-   Os arquivos são gerados com extensão `.ft` (ex: `font_ja.ft`).
+4. Clique em **▶ Build Game Bundles**.
+   Os arquivos são gerados em `AssetBundles/WebGL/Fonts` com extensão `.ft` (ex: `font_ja.ft`).
+
+Para gerar os bundles globais, use **Tools → Fine Localization → WebGL Remote Fonts → Global → Build Global Bundles Now** ou o botão **▶ Build Global Bundles**. Eles saem em `AssetBundles/WebGL/GlobalFonts` e só precisam ser recriados quando a fonte global mudar.
 
 > A lista é totalmente dinâmica — adicione/remova quantos idiomas quiser. **Nada é hardcoded.**
 
