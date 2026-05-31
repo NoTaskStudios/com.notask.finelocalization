@@ -48,7 +48,10 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("URL base da pasta dos bundles. Ex: https://cdn.site.com/fonts/")]
         [SerializeField] private string baseBundleUrl;
 
-        [Tooltip("Segmento do jogo na URL, logo após a base. Ex: 'trevor' → .../languages/trevor/font_ko-kr.ft. Vazio = usa o Product Name do Player Settings (minúsculo, sem espaços) automaticamente.")]
+        [Tooltip("Ligado = fontes GLOBAIS: mesma pasta /languages/ pra todos os jogos, com todos os caracteres (bundles maiores). Desligado = fontes POR JOGO em /languages/<gameId>/ (otimizadas por jogo).")]
+        [SerializeField] private bool useGlobalLanguage;
+
+        [Tooltip("Segmento do jogo na URL, logo após a base. Ex: 'trevor' → .../languages/trevor/font_ko-kr.ft. Vazio = usa o Product Name do Player Settings (minúsculo, sem espaços). Ignorado quando Global Language está ligado.")]
         [SerializeField] private string gameId;
 
         [Tooltip("Extensão adicionada depois do prefixo quando usar a URL base. Ex: .ft")]
@@ -130,12 +133,6 @@ namespace FineLocalization.Scripts.Runtime
             ClearTMPFallbackMaterialCache();
         }
 #endif
-
-        private void Reset()
-        {
-            if (string.IsNullOrWhiteSpace(gameId))
-                gameId = GetDefaultGameId();
-        }
 
         private void OnEnable()
         {
@@ -1805,9 +1802,12 @@ namespace FineLocalization.Scripts.Runtime
 
             var url = baseBundleUrl;
 
-            var gameSegment = GetGameSegment();
-            if (!string.IsNullOrWhiteSpace(gameSegment))
-                url = CombineBundleUrl(url, gameSegment);
+            if (!useGlobalLanguage)
+            {
+                var gameSegment = GetGameSegment();
+                if (!string.IsNullOrWhiteSpace(gameSegment))
+                    url = CombineBundleUrl(url, gameSegment);
+            }
 
             return CombineBundleUrl(url, "font_" + prefix + bundleFileExtension);
         }

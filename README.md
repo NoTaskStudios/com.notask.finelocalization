@@ -311,13 +311,14 @@ Como esses `.txt` ficam em pasta `Editor`, eles não entram na build.
 
 Adicione o componente `RemoteFontBundleLoader` na cena e configure:
 - `baseBundleUrl` — URL da pasta no CDN, ex: `https://cdn.site.com/fonts/`
-- `gameId` — segmento por jogo na URL, logo após a base. Vazio = usa o **Product Name** do Player Settings (minúsculo, sem espaços). Ex: `trevor`
+- `useGlobalLanguage` — **ligado** = fontes globais em `/languages/font_<lang>.ft` (mesma pasta pra todos os jogos, com todos os caracteres, bundles maiores); **desligado** = fontes por jogo em `/languages/<gameId>/font_<lang>.ft` (otimizadas)
+- `gameId` — (só quando `useGlobalLanguage` desligado) segmento por jogo na URL. Vazio = usa o **Product Name** do Player Settings (minúsculo, sem espaços). Ex: `trevor`
 - `bundleFileExtension` — mantenha `.ft` para os bundles gerados pelo builder
 - `bundles` — mapeamentos remotos: prefixo de idioma + nome exato do TMP_FontAsset dentro do AssetBundle baixado
 - `mainFontAssets` — fontes locais/base que recebem a fonte remota como fallback
 
-Com `baseBundleUrl = https://cdn.site.com/fonts/`, `gameId = trevor`, `languagePrefix = ja` e extensão `.ft`,
-o loader baixa `https://cdn.site.com/fonts/trevor/font_ja.ft`. Se `gameId` ficar vazio, o segmento vem do Product Name automaticamente.
+Com `useGlobalLanguage` **desligado**, `baseBundleUrl = https://cdn.site.com/fonts/`, `gameId = trevor`, `languagePrefix = ja` e extensão `.ft`,
+o loader baixa `https://cdn.site.com/fonts/trevor/font_ja.ft` (vazio → Product Name). Com `useGlobalLanguage` **ligado**, baixa `https://cdn.site.com/fonts/font_ja.ft`.
 
 O loader observa `LocalizationManager.OnLocalizationChanged` e baixa automaticamente quando o idioma muda. Faz **uma única varredura** da cena e força rebuild dos textos ativos — sem `SetActive(false/true)` (que provoca reflow total).
 
