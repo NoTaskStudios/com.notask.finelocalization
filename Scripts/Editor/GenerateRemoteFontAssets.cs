@@ -103,8 +103,27 @@ namespace FineLocalization.EditorTools
             }
 
             var atlasSize = Mathf.Clamp(config.atlasSize <= 0 ? 1024 : config.atlasSize, 256, 8192);
-            var pointSize = config.samplingPointSize <= 0 ? 90 : config.samplingPointSize;
             var paddingPercent = config.paddingPercent <= 0f ? 10f : config.paddingPercent;
+
+            int pointSize;
+            if (config.autoSizeToAtlas)
+            {
+                pointSize = FindMaxPointSizeForSingleAtlas(entry.sourceFont, characters, atlasSize, paddingPercent, out _);
+                if (pointSize <= 0)
+                {
+                    pointSize = MinAutoPointSize;
+                    Debug.LogWarning($"[Font Bake] '{bundleName}': subset grande demais pra caber em 1 atlas {atlasSize}². Usando point size {pointSize} com multi-atlas (várias páginas).");
+                }
+                else
+                {
+                    Debug.Log($"[Font Bake] '{bundleName}': auto-size → point size {pointSize} (cabe em 1 atlas {atlasSize}²).");
+                }
+            }
+            else
+            {
+                pointSize = config.samplingPointSize <= 0 ? 60 : config.samplingPointSize;
+            }
+
             var padding = Mathf.Max(1, Mathf.RoundToInt(pointSize * paddingPercent / 100f));
 
             // Create dynamic first so TryAddCharacters can rasterize the requested glyphs into the atlas.
@@ -257,6 +276,105 @@ namespace FineLocalization.EditorTools
                 return value;
 
             return value.Substring(0, max) + "…";
+        }
+
+        private const int MinAutoPointSize = 16;
+        private const int MaxAutoPointSize = 120;
+
+        /// <summary>
+        /// Binary-searches the LARGEST sampling point size whose glyphs all fit in a SINGLE
+        /// atlas page of <paramref name="atlasSize"/>². Returns 0 if even the smallest size overflows.
+        /// Glyphs the source font genuinely lacks are excluded from the fit test (they can never be
+        /// added regardless of size) and returned via <paramref name="fontLacks"/>.
+        /// </summary>
+        private static int FindMaxPointSizeForSingleAtlas(Font font, string characters, int atlasSize, float paddingPercent, out string fontLacks)
+        {
+            fontLacks = string.Empty;
+            if (font == null || string.IsNullOrEmpty(characters))
+                return 0;
+
+            // Probe at a small size with multi-atlas ON so space is never the limit: whatever stays
+            // missing here is genuinely absent from the source font.
+            var supported = characters;
+            var probe = TMP_FontAsset.CreateFontAsset(font, 24, 2, GlyphRenderMode.SDFAA, atlasSize, atlasSize, AtlasPopulationMode.Dynamic, true);
+            if (probe != null)
+            {
+                probe.TryAddCharacters(characters, out fontLacks);
+                supported = RemoveChars(characters, fontLacks);
+                DestroyFontAsset(probe);
+            }
+
+            if (string.IsNullOrEmpty(supported))
+                return 0;
+
+            int lo = MinAutoPointSize, hi = MaxAutoPointSize, best = 0;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) / 2;
+                int pad = Mathf.Max(1, Mathf.RoundToInt(mid * paddingPercent / 100f));
+
+                // Multi-atlas OFF so overflow shows up as missing chars instead of silently adding a page.
+                var candidate = TMP_FontAsset.CreateFontAsset(
+                    font, mid, pad, GlyphRenderMode.SDFAA, atlasSize, atlasSize,
+                    AtlasPopulationMode.Dynamic, enableMultiAtlasSupport: false
+                );
+
+                var fits = false;
+                if (candidate != null)
+                {
+                    candidate.TryAddCharacters(supported, out var miss);
+                    fits = string.IsNullOrEmpty(miss) && (candidate.atlasTextures == null || candidate.atlasTextures.Length <= 1);
+                    DestroyFontAsset(candidate);
+                }
+
+                if (fits)
+                {
+                    best = mid;
+                    lo = mid + 1;
+                }
+                else
+                {
+                    hi = mid - 1;
+                }
+            }
+
+            return best;
+        }
+
+        private static string RemoveChars(string source, string toRemove)
+        {
+            if (string.IsNullOrEmpty(toRemove) || string.IsNullOrEmpty(source))
+                return source;
+
+            var remove = new HashSet<char>(toRemove);
+            var sb = new StringBuilder(source.Length);
+            foreach (var c in source)
+            {
+                if (!remove.Contains(c))
+                    sb.Append(c);
+            }
+
+            return sb.ToString();
+        }
+
+        private static void DestroyFontAsset(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+                return;
+
+            if (fontAsset.atlasTextures != null)
+            {
+                foreach (var tex in fontAsset.atlasTextures)
+                {
+                    if (tex != null)
+                        UnityEngine.Object.DestroyImmediate(tex);
+                }
+            }
+
+            if (fontAsset.material != null)
+                UnityEngine.Object.DestroyImmediate(fontAsset.material);
+
+            UnityEngine.Object.DestroyImmediate(fontAsset);
         }
     }
 }

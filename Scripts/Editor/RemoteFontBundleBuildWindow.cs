@@ -99,9 +99,18 @@ namespace FineLocalization.EditorTools
                 "Você ainda pode assar manualmente pelo Font Asset Creator se preferir.",
                 MessageType.None
             );
+            var autoSizeProp = _serializedConfig.FindProperty(nameof(RemoteFontBundleBuildConfig.autoSizeToAtlas));
+            EditorGUILayout.PropertyField(autoSizeProp, new GUIContent("Auto Size (cabe em 1 atlas)"));
             EditorGUILayout.PropertyField(_serializedConfig.FindProperty(nameof(RemoteFontBundleBuildConfig.atlasSize)), new GUIContent("Atlas Size"));
-            EditorGUILayout.PropertyField(_serializedConfig.FindProperty(nameof(RemoteFontBundleBuildConfig.samplingPointSize)), new GUIContent("Sampling Point Size"));
+
+            using (new EditorGUI.DisabledScope(autoSizeProp.boolValue))
+                EditorGUILayout.PropertyField(_serializedConfig.FindProperty(nameof(RemoteFontBundleBuildConfig.samplingPointSize)), new GUIContent("Sampling Point Size (fallback)"));
+
             EditorGUILayout.PropertyField(_serializedConfig.FindProperty(nameof(RemoteFontBundleBuildConfig.paddingPercent)), new GUIContent("Padding (% do point size)"));
+
+            if (autoSizeProp.boolValue)
+                EditorGUILayout.HelpBox("Auto Size ligado: o point size é calculado pra encaixar todos os glifos em 1 página. O campo acima vira só fallback.", MessageType.None);
+
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(6);
         }

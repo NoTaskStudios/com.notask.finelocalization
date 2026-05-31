@@ -33,11 +33,14 @@ namespace FineLocalization.EditorTools
         public List<Entry> entries = new();
 
         [Header("Auto-Bake (opcional)")]
+        [Tooltip("Calcula automaticamente o maior point size que faz TODOS os glifos caberem em 1 página de atlas (sem perder glifo por espaço e com o menor bundle). Desligado = usa o Sampling Point Size fixo abaixo.")]
+        public bool autoSizeToAtlas = true;
+
         [Tooltip("Lado do atlas SDF (quadrado), em pixels. Padrão 1024.")]
         public int atlasSize = 1024;
 
-        [Tooltip("Sampling point size do glifo. Maior = mais nítido e bundle maior; menor = bundle menor. Padrão 90.")]
-        public int samplingPointSize = 90;
+        [Tooltip("Sampling point size do glifo. Maior = mais nítido porém mais páginas de atlas (bundle maior). ~48–60 costuma caber em 1 página de 1024. Padrão 60.")]
+        public int samplingPointSize = 60;
 
         [Tooltip("Padding do SDF em % do sampling point size. ~10% deixa as bordas suaves.")]
         [Range(1f, 25f)]
