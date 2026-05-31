@@ -293,7 +293,7 @@ Idiomas com **muitos glyphs** (chinês, japonês, coreano, tailandês, árabe, h
    - Arraste a **pasta** que contém os `TMP_FontAsset` desse idioma
    - A janela valida e mostra `✔ N TMP_FontAsset(s) em '...'`
 4. Clique em **▶ Build Game Bundles**.
-   Os arquivos são gerados em `AssetBundles/WebGL/Fonts` com extensão `.ft` (ex: `font_ja.ft`).
+   Os arquivos são gerados em `AssetBundles/WebGL/Fonts` com extensão `.ft` (ex: `font_ja-jp.ft`).
 
 Para gerar os bundles globais, use **Tools → Fine Localization → WebGL Remote Fonts → Global → Build Global Bundles Now** ou o botão **▶ Build Global Bundles**. Eles saem em `AssetBundles/WebGL/GlobalFonts` e só precisam ser recriados quando a fonte global mudar.
 
@@ -323,7 +323,7 @@ Adicione o componente `RemoteFontBundleLoader` na cena e configure:
 - `mainFontAssets` — fontes locais/base que recebem a fonte remota como fallback
 
 Com `useGlobalLanguage` **desligado**, `baseBundleUrl = https://cdn.site.com/fonts/`, `gameId = trevor`, `languagePrefix = ja` e extensão `.ft`,
-o loader baixa `https://cdn.site.com/fonts/trevor/font_ja.ft` (vazio → Product Name). Com `useGlobalLanguage` **ligado**, baixa `https://cdn.site.com/fonts/font_ja.ft`.
+o loader baixa `https://cdn.site.com/fonts/trevor/font_ja-jp.ft` (vazio → Product Name). Com `useGlobalLanguage` **ligado**, baixa `https://cdn.site.com/fonts/font_ja-jp.ft`.
 
 O loader observa `LocalizationManager.OnLocalizationChanged` e baixa automaticamente quando o idioma muda. Faz **uma única varredura** da cena e força rebuild dos textos ativos — sem `SetActive(false/true)` (que provoca reflow total).
 

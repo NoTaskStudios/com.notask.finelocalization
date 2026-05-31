@@ -16,7 +16,7 @@ namespace FineLocalization.EditorTools
         [System.Serializable]
         public class Entry
         {
-            [Tooltip("Nome do bundle gerado (vira o nome do arquivo). Ex: font_zh-cn, font_ja, font_ar.")]
+            [Tooltip("Nome do bundle gerado (vira o nome do arquivo). Ex: font_zh-cn, font_ja-jp, font_ar.")]
             public string bundleName;
 
             [Tooltip("Pasta contendo os TMP_FontAsset desse idioma. Arraste a pasta do Project aqui.")]
@@ -81,9 +81,9 @@ namespace FineLocalization.EditorTools
             var instance = CreateInstance<RemoteFontBundleBuildConfig>();
             instance.entries.Add(CreateDefaultEntry("font_zh-cn", "ChineseSimplified"));
             instance.entries.Add(CreateDefaultEntry("font_zh-tw", "ChineseTraditional"));
-            instance.entries.Add(CreateDefaultEntry("font_ja", "Japanese"));
-            instance.entries.Add(CreateDefaultEntry("font_ko", "Korean"));
-            instance.entries.Add(CreateDefaultEntry("font_th", "Thai"));
+            instance.entries.Add(CreateDefaultEntry("font_ja-jp", "Japanese"));
+            instance.entries.Add(CreateDefaultEntry("font_ko-kr", "Korean"));
+            instance.entries.Add(CreateDefaultEntry("font_th-th", "Thai"));
 
             AssetDatabase.CreateAsset(instance, DefaultAssetPath);
             AssetDatabase.SaveAssets();
@@ -190,11 +190,11 @@ namespace FineLocalization.EditorTools
                 case "font_zh-tw":
                 case "font_zh_tw":
                     return "ChineseTraditional";
-                case "font_ja":
+                case "font_ja-jp":
                     return "Japanese";
-                case "font_ko":
+                case "font_ko-kr":
                     return "Korean";
-                case "font_th":
+                case "font_th-th":
                     return "Thai";
                 default:
                     return null;
