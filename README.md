@@ -298,8 +298,11 @@ Ao sincronizar as planilhas, o pacote gera arquivos de caracteres em
 `Assets/FineLocalization/Editor/GeneratedCharacters/`, como `characters_all.txt`,
 `characters_ja.txt`, `characters_ko.txt` e `characters_th.txt`.
 O sufixo segue o nome da coluna de idioma no CSV.
-Para criar um `TMP_FontAsset` remoto, use o arquivo do idioma correspondente no Font Asset Creator;
-isso evita que uma fonte japonesa inclua glyphs de coreano, tailandês, moedas ou outros idiomas.
+Para criar o `TMP_FontAsset` remoto há duas opções:
+- **Automático (recomendado):** defina a **Source Font** (.ttf) de cada idioma na janela e clique em **⚙ Generate Font Assets** (ou menu *Tools → Fine Localization → WebGL Remote Fonts → Generate Font Assets From Characters*). Ele assa um SDF estático contendo só os caracteres do `characters_<lang>.txt`, salva na pasta do idioma e mantém o `.ttf` **fora** do bundle. Settings de atlas/point size/padding ficam na janela.
+- **Manual:** use o arquivo do idioma correspondente no Font Asset Creator.
+
+Qualquer um dos dois evita que uma fonte japonesa inclua glyphs de coreano, tailandês, moedas ou outros idiomas.
 O arquivo por idioma contém apenas caracteres encontrados naquela coluna; caracteres comuns de runtime
 ficam no arquivo agregado/base.
 Como esses `.txt` ficam em pasta `Editor`, eles não entram na build.
@@ -308,12 +311,13 @@ Como esses `.txt` ficam em pasta `Editor`, eles não entram na build.
 
 Adicione o componente `RemoteFontBundleLoader` na cena e configure:
 - `baseBundleUrl` — URL da pasta no CDN, ex: `https://cdn.site.com/fonts/`
+- `gameId` — segmento por jogo na URL, logo após a base. Vazio = usa o **Product Name** do Player Settings (minúsculo, sem espaços). Ex: `trevor`
 - `bundleFileExtension` — mantenha `.ft` para os bundles gerados pelo builder
 - `bundles` — mapeamentos remotos: prefixo de idioma + nome exato do TMP_FontAsset dentro do AssetBundle baixado
 - `mainFontAssets` — fontes locais/base que recebem a fonte remota como fallback
 
-Com `baseBundleUrl = https://cdn.site.com/fonts/`, `languagePrefix = ja` e extensão `.ft`,
-o loader baixa `https://cdn.site.com/fonts/font_ja.ft`.
+Com `baseBundleUrl = https://cdn.site.com/fonts/`, `gameId = trevor`, `languagePrefix = ja` e extensão `.ft`,
+o loader baixa `https://cdn.site.com/fonts/trevor/font_ja.ft`. Se `gameId` ficar vazio, o segmento vem do Product Name automaticamente.
 
 O loader observa `LocalizationManager.OnLocalizationChanged` e baixa automaticamente quando o idioma muda. Faz **uma única varredura** da cena e força rebuild dos textos ativos — sem `SetActive(false/true)` (que provoca reflow total).
 

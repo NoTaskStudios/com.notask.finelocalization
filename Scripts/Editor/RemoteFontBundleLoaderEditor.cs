@@ -13,6 +13,7 @@ namespace FineLocalization.EditorTools
     public class RemoteFontBundleLoaderEditor : UnityEditor.Editor
     {
         private SerializedProperty _baseBundleUrl;
+        private SerializedProperty _gameId;
         private SerializedProperty _bundleFileExtension;
         private SerializedProperty _bundles;
         private SerializedProperty _mainFontAssets;
@@ -25,6 +26,7 @@ namespace FineLocalization.EditorTools
         private void OnEnable()
         {
             _baseBundleUrl = serializedObject.FindProperty("baseBundleUrl");
+            _gameId = serializedObject.FindProperty("gameId");
             _bundleFileExtension = serializedObject.FindProperty("bundleFileExtension");
             _bundles = serializedObject.FindProperty("bundles");
             _mainFontAssets = serializedObject.FindProperty("mainFontAssets");
@@ -53,9 +55,19 @@ namespace FineLocalization.EditorTools
             EditorGUILayout.LabelField("Remote Bundle Source", EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.PropertyField(_baseBundleUrl, new GUIContent("Base Bundle URL"));
+            EditorGUILayout.PropertyField(_gameId, new GUIContent("Game Id"));
             EditorGUILayout.PropertyField(_bundleFileExtension, new GUIContent("Bundle Extension"));
+
+            if (string.IsNullOrWhiteSpace(_gameId.stringValue))
+            {
+                var resolved = RemoteFontBundleLoader.GetDefaultGameId();
+                EditorGUILayout.LabelField("Game Id (auto)", string.IsNullOrEmpty(resolved) ? "<empty>" : resolved, EditorStyles.miniLabel);
+            }
+
             EditorGUILayout.HelpBox(
-                "Runtime URL pattern: Base Bundle URL + /font_<languagePrefix> + Bundle Extension. Example: languagePrefix 'ja' downloads 'font_ja.ft'.",
+                "Runtime URL pattern: Base Bundle URL + /<Game Id> + /font_<languagePrefix> + Bundle Extension. " +
+                "Game Id empty = Player Settings Product Name (lowercased, no spaces). " +
+                "Example: product 'Trevor', prefix 'ko-kr' → .../trevor/font_ko-kr.ft.",
                 MessageType.None
             );
             EditorGUILayout.EndVertical();
@@ -139,13 +151,21 @@ namespace FineLocalization.EditorTools
             EditorGUILayout.EndVertical();
         }
 
-        private static void DrawRuntimeBundleNamePreview(string languagePrefix)
+        private void DrawRuntimeBundleNamePreview(string languagePrefix)
         {
             if (string.IsNullOrWhiteSpace(languagePrefix))
                 return;
 
             var normalized = languagePrefix.Trim().ToLowerInvariant();
-            EditorGUILayout.LabelField("Runtime Bundle File", $"font_{normalized}.ft", EditorStyles.miniLabel);
+            var extension = string.IsNullOrWhiteSpace(_bundleFileExtension.stringValue) ? ".ft" : _bundleFileExtension.stringValue.Trim();
+            var fileName = $"font_{normalized}{extension}";
+
+            var game = string.IsNullOrWhiteSpace(_gameId.stringValue)
+                ? RemoteFontBundleLoader.GetDefaultGameId()
+                : _gameId.stringValue.Trim();
+
+            var path = string.IsNullOrEmpty(game) ? fileName : $"{game}/{fileName}";
+            EditorGUILayout.LabelField("Runtime Bundle Path", path, EditorStyles.miniLabel);
         }
 
         private void FillMissingRemoteFontNamesFromBuilderConfig()

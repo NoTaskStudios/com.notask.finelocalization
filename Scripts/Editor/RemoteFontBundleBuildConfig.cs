@@ -21,6 +21,9 @@ namespace FineLocalization.EditorTools
 
             [Tooltip("Pasta contendo os TMP_FontAsset desse idioma. Arraste a pasta do Project aqui.")]
             public DefaultAsset folder;
+
+            [Tooltip("Fonte de origem (.ttf/.otf) para assar o TMP_FontAsset automaticamente. Pode ficar numa pasta Editor pra não ir pra build. Vazio = bake manual.")]
+            public Font sourceFont;
         }
 
         [Tooltip("Pasta de saída relativa ao projeto. Ex: AssetBundles/WebGL/Fonts")]
@@ -28,6 +31,17 @@ namespace FineLocalization.EditorTools
 
         [Tooltip("Lista dinâmica de bundles. Adicione/remova quantos idiomas precisar.")]
         public List<Entry> entries = new();
+
+        [Header("Auto-Bake (opcional)")]
+        [Tooltip("Lado do atlas SDF (quadrado), em pixels. Padrão 1024.")]
+        public int atlasSize = 1024;
+
+        [Tooltip("Sampling point size do glifo. Maior = mais nítido e bundle maior; menor = bundle menor. Padrão 90.")]
+        public int samplingPointSize = 90;
+
+        [Tooltip("Padding do SDF em % do sampling point size. ~10% deixa as bordas suaves.")]
+        [Range(1f, 25f)]
+        public float paddingPercent = 10f;
 
         private const string DefaultAssetPath =
             "Assets/FineLocalization/Editor/RemoteFontBundleBuildConfig.asset";

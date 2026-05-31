@@ -197,7 +197,7 @@ namespace FineLocalization.EditorTools
             }
         }
 
-        private static string LoadExpectedCharactersForBundle(string bundleName, out List<string> sourceFiles)
+        internal static string LoadExpectedCharactersForBundle(string bundleName, out List<string> sourceFiles)
         {
             sourceFiles = new List<string>();
 

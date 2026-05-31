@@ -50,6 +50,7 @@ namespace FineLocalization.EditorTools
 
             DrawHeader();
             DrawOutputFolder();
+            DrawAutoBakeSettings();
             DrawEntries();
             DrawBottomActions();
 
@@ -88,6 +89,23 @@ namespace FineLocalization.EditorTools
             EditorGUILayout.Space(6);
         }
 
+        private void DrawAutoBakeSettings()
+        {
+            EditorGUILayout.LabelField("Auto-Bake (opcional)", EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.HelpBox(
+                "Assa o TMP_FontAsset estático automaticamente a partir do characters_<lang>.txt " +
+                "(gerado no sync das planilhas) + a Source Font de cada entry. Atlas SDF, sem .ttf no bundle. " +
+                "Você ainda pode assar manualmente pelo Font Asset Creator se preferir.",
+                MessageType.None
+            );
+            EditorGUILayout.PropertyField(_serializedConfig.FindProperty(nameof(RemoteFontBundleBuildConfig.atlasSize)), new GUIContent("Atlas Size"));
+            EditorGUILayout.PropertyField(_serializedConfig.FindProperty(nameof(RemoteFontBundleBuildConfig.samplingPointSize)), new GUIContent("Sampling Point Size"));
+            EditorGUILayout.PropertyField(_serializedConfig.FindProperty(nameof(RemoteFontBundleBuildConfig.paddingPercent)), new GUIContent("Padding (% do point size)"));
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(6);
+        }
+
         private void DrawEntries()
         {
             EditorGUILayout.LabelField("Bundles", EditorStyles.boldLabel);
@@ -112,6 +130,7 @@ namespace FineLocalization.EditorTools
                 EditorGUILayout.EndHorizontal();
 
                 EditorGUILayout.PropertyField(folderProp, new GUIContent("Remote TMP Font Folder"));
+                EditorGUILayout.PropertyField(entryProp.FindPropertyRelative("sourceFont"), new GUIContent("Source Font (auto-bake)"));
                 DrawBundlePreview(bundleNameProp.stringValue);
 
                 DrawEntryValidation(folderProp.objectReferenceValue);
@@ -189,6 +208,15 @@ namespace FineLocalization.EditorTools
             }
 
             var prevBg = GUI.backgroundColor;
+
+            GUI.backgroundColor = new Color(0.75f, 0.9f, 0.6f);
+            if (GUILayout.Button("⚙ Generate Font Assets", GUILayout.Height(28)))
+            {
+                EditorUtility.SetDirty(_config);
+                AssetDatabase.SaveAssetIfDirty(_config);
+                GenerateRemoteFontAssets.GenerateAll(_config);
+            }
+
             GUI.backgroundColor = new Color(0.55f, 0.85f, 1f);
             if (GUILayout.Button("▶ Build WebGL Bundles", GUILayout.Height(28)))
             {
@@ -196,6 +224,7 @@ namespace FineLocalization.EditorTools
                 AssetDatabase.SaveAssetIfDirty(_config);
                 BuildRemoteFontBundles.BuildWebGlFontBundles();
             }
+
             GUI.backgroundColor = prevBg;
 
             EditorGUILayout.EndHorizontal();

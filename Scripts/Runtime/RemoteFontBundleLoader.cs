@@ -48,6 +48,9 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("URL base da pasta dos bundles. Ex: https://cdn.site.com/fonts/")]
         [SerializeField] private string baseBundleUrl;
 
+        [Tooltip("Segmento do jogo na URL, logo após a base. Ex: 'trevor' → .../languages/trevor/font_ko-kr.ft. Vazio = usa o Product Name do Player Settings (minúsculo, sem espaços) automaticamente.")]
+        [SerializeField] private string gameId;
+
         [Tooltip("Extensão adicionada depois do prefixo quando usar a URL base. Ex: .ft")]
         [SerializeField] private string bundleFileExtension = ".ft";
 
@@ -127,6 +130,12 @@ namespace FineLocalization.Scripts.Runtime
             ClearTMPFallbackMaterialCache();
         }
 #endif
+
+        private void Reset()
+        {
+            if (string.IsNullOrWhiteSpace(gameId))
+                gameId = GetDefaultGameId();
+        }
 
         private void OnEnable()
         {
@@ -1794,7 +1803,31 @@ namespace FineLocalization.Scripts.Runtime
             if (string.IsNullOrWhiteSpace(baseBundleUrl))
                 return string.Empty;
 
-            return CombineBundleUrl(baseBundleUrl, "font_" + prefix + bundleFileExtension);
+            var url = baseBundleUrl;
+
+            var gameSegment = GetGameSegment();
+            if (!string.IsNullOrWhiteSpace(gameSegment))
+                url = CombineBundleUrl(url, gameSegment);
+
+            return CombineBundleUrl(url, "font_" + prefix + bundleFileExtension);
+        }
+
+        private string GetGameSegment()
+        {
+            return string.IsNullOrWhiteSpace(gameId) ? GetDefaultGameId() : gameId.Trim();
+        }
+
+        /// <summary>
+        /// Default per-game URL segment derived from the Player Settings Product Name
+        /// (lowercased, spaces removed). Used when <c>gameId</c> is left empty.
+        /// </summary>
+        public static string GetDefaultGameId()
+        {
+            var productName = Application.productName;
+            if (string.IsNullOrWhiteSpace(productName))
+                return string.Empty;
+
+            return productName.Trim().ToLowerInvariant().Replace(" ", "");
         }
 
         private static string CombineBundleUrl(string baseUrl, string fileName)
