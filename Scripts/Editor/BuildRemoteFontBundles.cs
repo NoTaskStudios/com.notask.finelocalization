@@ -124,6 +124,7 @@ namespace FineLocalization.EditorTools
                     continue;
                 }
 
+                RepairFontAssetsBeforeBundle(assetPaths, logPrefix);
                 ValidateFontAssetsContainExpectedCharacters(bundleName, assetPaths, logPrefix);
 
                 var bundleFileName = EnsureBundleFileExtension(bundleName);
@@ -202,6 +203,231 @@ namespace FineLocalization.EditorTools
 
             Debug.LogWarning($"{logPrefix} Ignorando '{assetPath}': AssetDatabase nao carregou como TMP_FontAsset.");
             return false;
+        }
+
+        private static void RepairFontAssetsBeforeBundle(string[] assetPaths, string logPrefix)
+        {
+            if (assetPaths == null)
+                return;
+
+            for (int i = 0; i < assetPaths.Length; i++)
+                RepairFontAssetBeforeBundle(assetPaths[i], logPrefix);
+        }
+
+        private static void RepairFontAssetBeforeBundle(string assetPath, string logPrefix)
+        {
+            var fontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(assetPath);
+            if (fontAsset == null)
+                return;
+
+            var changed = false;
+            var atlasTexture = GetFontAtlasTexture(fontAsset);
+            if (atlasTexture == null)
+            {
+                Debug.LogWarning($"{logPrefix} '{fontAsset.name}' sem atlasTexture em '{assetPath}'.");
+                return;
+            }
+
+            atlasTexture.hideFlags = HideFlags.None;
+            changed |= EnsureSubAsset(atlasTexture, fontAsset, assetPath, logPrefix);
+            EditorUtility.SetDirty(atlasTexture);
+
+            var material = SafeGetFontMaterial(fontAsset);
+            if (!IsValidFontMaterial(material, atlasTexture) || !IsObjectInAsset(material, assetPath))
+            {
+                var repairedMaterial = CreatePersistentFontMaterial(fontAsset, atlasTexture, material, assetPath, logPrefix);
+                if (repairedMaterial != null)
+                {
+                    fontAsset.material = repairedMaterial;
+                    material = repairedMaterial;
+                    changed = true;
+                }
+            }
+
+            if (material != null)
+            {
+                material.name = fontAsset.name + " Material";
+                material.hideFlags = HideFlags.None;
+                changed |= TryNormalizeMainTexture(material, atlasTexture);
+
+                ApplyFontAtlasSdfMetrics(material, fontAsset);
+                EditorUtility.SetDirty(material);
+            }
+
+            if (changed)
+            {
+                EditorUtility.SetDirty(fontAsset);
+                AssetDatabase.SaveAssetIfDirty(fontAsset);
+                Debug.Log($"{logPrefix} Reparado material/atlas de '{fontAsset.name}' antes do bundle.");
+            }
+        }
+
+        private static Material CreatePersistentFontMaterial(TMP_FontAsset fontAsset, Texture atlasTexture, Material currentMaterial, string assetPath, string logPrefix)
+        {
+            var template = HasUsableShader(currentMaterial)
+                ? currentMaterial
+                : SafeGetFontMaterial(TMP_Settings.defaultFontAsset);
+
+            Material material = null;
+            if (HasUsableShader(template))
+                material = new Material(template);
+            else
+            {
+                var shader = FindTmpDistanceFieldShader();
+                if (shader != null)
+                    material = new Material(shader);
+            }
+
+            if (material == null)
+            {
+                Debug.LogWarning($"{logPrefix} Nao foi possivel criar material TMP valido para '{fontAsset.name}'.");
+                return null;
+            }
+
+            material.name = fontAsset.name + " Material";
+            material.hideFlags = HideFlags.None;
+            TryNormalizeMainTexture(material, atlasTexture);
+            ApplyFontAtlasSdfMetrics(material, fontAsset);
+
+            AssetDatabase.AddObjectToAsset(material, fontAsset);
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static bool EnsureSubAsset(UnityEngine.Object asset, UnityEngine.Object owner, string ownerPath, string logPrefix)
+        {
+            if (asset == null || owner == null || string.IsNullOrEmpty(ownerPath))
+                return false;
+
+            var assetPath = AssetDatabase.GetAssetPath(asset);
+            if (string.Equals(assetPath, ownerPath, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (!string.IsNullOrEmpty(assetPath))
+            {
+                Debug.LogWarning($"{logPrefix} '{asset.name}' de '{owner.name}' nao esta salvo como sub-asset do TMP_FontAsset: {assetPath}");
+                return false;
+            }
+
+            AssetDatabase.AddObjectToAsset(asset, owner);
+            return true;
+        }
+
+        private static bool IsObjectInAsset(UnityEngine.Object asset, string assetPath)
+        {
+            if (asset == null || string.IsNullOrEmpty(assetPath))
+                return false;
+
+            return string.Equals(AssetDatabase.GetAssetPath(asset), assetPath, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsValidFontMaterial(Material material, Texture expectedAtlas)
+        {
+            if (!HasUsableShader(material) || expectedAtlas == null)
+                return false;
+
+            try
+            {
+                return material.GetTexture(ShaderUtilities.ID_MainTex) == expectedAtlas;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryNormalizeMainTexture(Material material, Texture expectedAtlas)
+        {
+            if (material == null || expectedAtlas == null)
+                return false;
+
+            try
+            {
+                if (!material.HasProperty(ShaderUtilities.ID_MainTex))
+                    return false;
+
+                if (material.GetTexture(ShaderUtilities.ID_MainTex) == expectedAtlas)
+                    return false;
+
+                material.SetTexture(ShaderUtilities.ID_MainTex, expectedAtlas);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static Material SafeGetFontMaterial(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+                return null;
+
+            try
+            {
+                return fontAsset.material;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static Texture GetFontAtlasTexture(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+                return null;
+
+            var atlasTexture = fontAsset.atlasTexture;
+            if (atlasTexture == null && fontAsset.atlasTextures != null && fontAsset.atlasTextures.Length > 0)
+                atlasTexture = fontAsset.atlasTextures[0];
+
+            return atlasTexture;
+        }
+
+        private static bool HasUsableShader(Material material)
+        {
+            if (material == null || material.shader == null)
+                return false;
+
+            return IsUsableShader(material.shader);
+        }
+
+        private static bool IsUsableShader(Shader shader)
+        {
+            return shader != null &&
+                   shader.name.IndexOf("InternalErrorShader", StringComparison.OrdinalIgnoreCase) < 0 &&
+                   shader.isSupported;
+        }
+
+        private static Shader FindTmpDistanceFieldShader()
+        {
+            var defaultShader = SafeGetFontMaterial(TMP_Settings.defaultFontAsset)?.shader;
+            if (IsUsableShader(defaultShader))
+                return defaultShader;
+
+            var mobileShader = Shader.Find("TextMeshPro/Mobile/Distance Field");
+            if (IsUsableShader(mobileShader))
+                return mobileShader;
+
+            var desktopShader = Shader.Find("TextMeshPro/Distance Field");
+            return IsUsableShader(desktopShader) ? desktopShader : null;
+        }
+
+        private static void ApplyFontAtlasSdfMetrics(Material material, TMP_FontAsset fontAsset)
+        {
+            if (material == null || fontAsset == null)
+                return;
+
+            SetMaterialFloatIfPresent(material, "_TextureWidth", fontAsset.atlasWidth);
+            SetMaterialFloatIfPresent(material, "_TextureHeight", fontAsset.atlasHeight);
+            SetMaterialFloatIfPresent(material, "_GradientScale", fontAsset.atlasPadding + 1);
+        }
+
+        private static void SetMaterialFloatIfPresent(Material material, string propertyName, float value)
+        {
+            if (material != null && material.HasProperty(propertyName) && value > 0f)
+                material.SetFloat(propertyName, value);
         }
 
         private static void ValidateFontAssetsContainExpectedCharacters(string bundleName, string[] assetPaths, string logPrefix)

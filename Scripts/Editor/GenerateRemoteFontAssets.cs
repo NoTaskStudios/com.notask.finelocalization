@@ -176,7 +176,8 @@ namespace FineLocalization.EditorTools
 
             language = GetLanguageFromBundleName(bundleName);
 
-            SaveFontAsset(fontAsset, assetPath);
+            var materialTemplate = CreateMaterialTemplate(assetPath);
+            SaveFontAsset(fontAsset, assetPath, materialTemplate);
 
             var pages = fontAsset.atlasTextures?.Length ?? 0;
             Debug.Log(
@@ -185,7 +186,7 @@ namespace FineLocalization.EditorTools
             return true;
         }
 
-        private static void SaveFontAsset(TMP_FontAsset fontAsset, string assetPath)
+        private static void SaveFontAsset(TMP_FontAsset fontAsset, string assetPath, Material materialTemplate)
         {
             // Overwrite any existing asset at the same path so the loader's text mapping
             // (fontAssetName) keeps matching the regenerated font.
@@ -203,17 +204,22 @@ namespace FineLocalization.EditorTools
                         continue;
 
                     if (string.IsNullOrEmpty(tex.name))
-                        tex.name = $"Atlas {i}";
+                        tex.name = i == 0 ? $"{fontAsset.name} Atlas" : $"{fontAsset.name} Atlas {i}";
 
+                    tex.hideFlags = HideFlags.None;
                     AssetDatabase.AddObjectToAsset(tex, fontAsset);
+                    EditorUtility.SetDirty(tex);
                 }
             }
 
-            var material = EnsureFontMaterial(fontAsset);
+            var material = EnsureFontMaterial(fontAsset, materialTemplate);
             if (material != null)
             {
                 material.name = fontAsset.name + " Material";
+                material.hideFlags = HideFlags.None;
+                fontAsset.material = material;
                 AssetDatabase.AddObjectToAsset(material, fontAsset);
+                EditorUtility.SetDirty(material);
             }
 
             // Keep the raw .ttf OUT of the AssetBundle: a Static font renders from the baked atlas only.
@@ -230,13 +236,27 @@ namespace FineLocalization.EditorTools
             AssetDatabase.ImportAsset(assetPath);
         }
 
-        private static Material EnsureFontMaterial(TMP_FontAsset fontAsset)
+        private static Material CreateMaterialTemplate(string assetPath)
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(assetPath);
+            var existingMaterial = existing != null ? SafeGetFontMaterial(existing) : null;
+            if (HasUsableShader(existingMaterial))
+                return new Material(existingMaterial);
+
+            var defaultMaterial = SafeGetFontMaterial(TMP_Settings.defaultFontAsset);
+            if (HasUsableShader(defaultMaterial))
+                return new Material(defaultMaterial);
+
+            return null;
+        }
+
+        private static Material EnsureFontMaterial(TMP_FontAsset fontAsset, Material materialTemplate)
         {
             if (fontAsset == null)
                 return null;
 
             var atlasTexture = GetFontAtlasTexture(fontAsset);
-            var material = fontAsset.material;
+            var material = materialTemplate != null ? materialTemplate : SafeGetFontMaterial(fontAsset);
 
             if (material == null)
             {
@@ -248,7 +268,6 @@ namespace FineLocalization.EditorTools
                 }
 
                 material = new Material(shader);
-                fontAsset.material = material;
             }
             else if (!HasUsableShader(material))
             {
@@ -263,7 +282,23 @@ namespace FineLocalization.EditorTools
                 material.SetTexture(ShaderUtilities.ID_MainTex, atlasTexture);
 
             ApplyFontAtlasSdfMetrics(material, fontAsset);
+            fontAsset.material = material;
             return material;
+        }
+
+        private static Material SafeGetFontMaterial(TMP_FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+                return null;
+
+            try
+            {
+                return fontAsset.material;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static Texture GetFontAtlasTexture(TMP_FontAsset fontAsset)
@@ -280,8 +315,16 @@ namespace FineLocalization.EditorTools
 
         private static Shader FindTmpDistanceFieldShader()
         {
-            return Shader.Find("TextMeshPro/Mobile/Distance Field") ??
-                   Shader.Find("TextMeshPro/Distance Field");
+            var defaultShader = SafeGetFontMaterial(TMP_Settings.defaultFontAsset)?.shader;
+            if (IsUsableShader(defaultShader))
+                return defaultShader;
+
+            var mobileShader = Shader.Find("TextMeshPro/Mobile/Distance Field");
+            if (IsUsableShader(mobileShader))
+                return mobileShader;
+
+            var desktopShader = Shader.Find("TextMeshPro/Distance Field");
+            return IsUsableShader(desktopShader) ? desktopShader : null;
         }
 
         private static bool HasUsableShader(Material material)
@@ -289,7 +332,14 @@ namespace FineLocalization.EditorTools
             if (material == null || material.shader == null)
                 return false;
 
-            return material.shader.name.IndexOf("InternalErrorShader", StringComparison.OrdinalIgnoreCase) < 0;
+            return IsUsableShader(material.shader);
+        }
+
+        private static bool IsUsableShader(Shader shader)
+        {
+            return shader != null &&
+                   shader.name.IndexOf("InternalErrorShader", StringComparison.OrdinalIgnoreCase) < 0 &&
+                   shader.isSupported;
         }
 
         private static void ApplyFontAtlasSdfMetrics(Material material, TMP_FontAsset fontAsset)

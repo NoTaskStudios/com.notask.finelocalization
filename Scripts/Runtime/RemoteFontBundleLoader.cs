@@ -1673,8 +1673,7 @@ namespace FineLocalization.Scripts.Runtime
 
             try
             {
-                return material.shader != null &&
-                       material.shader.name.IndexOf("InternalErrorShader", StringComparison.OrdinalIgnoreCase) < 0;
+                return IsUsableShader(material.shader);
             }
             catch
             {
@@ -1682,10 +1681,25 @@ namespace FineLocalization.Scripts.Runtime
             }
         }
 
+        private static bool IsUsableShader(Shader shader)
+        {
+            return shader != null &&
+                   shader.name.IndexOf("InternalErrorShader", StringComparison.OrdinalIgnoreCase) < 0 &&
+                   shader.isSupported;
+        }
+
         private static Shader FindTmpDistanceFieldShader()
         {
-            return Shader.Find("TextMeshPro/Mobile/Distance Field") ??
-                   Shader.Find("TextMeshPro/Distance Field");
+            var defaultShader = SafeGetFontMaterial(TMP_Settings.defaultFontAsset)?.shader;
+            if (IsUsableShader(defaultShader))
+                return defaultShader;
+
+            var mobileShader = Shader.Find("TextMeshPro/Mobile/Distance Field");
+            if (IsUsableShader(mobileShader))
+                return mobileShader;
+
+            var desktopShader = Shader.Find("TextMeshPro/Distance Field");
+            return IsUsableShader(desktopShader) ? desktopShader : null;
         }
 
         private static TMP_Text[] FindSceneTexts()
