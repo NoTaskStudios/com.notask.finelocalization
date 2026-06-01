@@ -23,25 +23,71 @@ namespace FineLocalization.EditorTools
         private SerializedProperty _extraLatinPrefixes;
         private SerializedProperty _forceRemoteFontPrefixes;
         private SerializedProperty _testLanguage;
+        private bool _propertiesReady;
 
         private void OnEnable()
         {
-            _baseBundleUrl = serializedObject.FindProperty("baseBundleUrl");
-            _useGlobalLanguage = serializedObject.FindProperty("useGlobalLanguage");
-            _gameId = serializedObject.FindProperty("gameId");
-            _bundleFileExtension = serializedObject.FindProperty("bundleFileExtension");
-            _bundles = serializedObject.FindProperty("bundles");
-            _mainFontAssets = serializedObject.FindProperty("mainFontAssets");
-            _rebuildBatchSize = serializedObject.FindProperty("rebuildBatchSize");
-            _ignoredFontNameContains = serializedObject.FindProperty("ignoredFontNameContains");
-            _extraLatinPrefixes = serializedObject.FindProperty("extraLatinPrefixes");
-            _forceRemoteFontPrefixes = serializedObject.FindProperty("forceRemoteFontPrefixes");
-            _testLanguage = serializedObject.FindProperty("testLanguage");
+            TryInitializeProperties();
+        }
+
+        private bool TryInitializeProperties()
+        {
+            _propertiesReady = false;
+
+            if (target == null || targets == null || targets.Length == 0)
+                return false;
+
+            for (int i = 0; i < targets.Length; i++)
+            {
+                if (targets[i] == null)
+                    return false;
+            }
+
+            try
+            {
+                var so = serializedObject;
+                _baseBundleUrl = so.FindProperty("baseBundleUrl");
+                _useGlobalLanguage = so.FindProperty("useGlobalLanguage");
+                _gameId = so.FindProperty("gameId");
+                _bundleFileExtension = so.FindProperty("bundleFileExtension");
+                _bundles = so.FindProperty("bundles");
+                _mainFontAssets = so.FindProperty("mainFontAssets");
+                _rebuildBatchSize = so.FindProperty("rebuildBatchSize");
+                _ignoredFontNameContains = so.FindProperty("ignoredFontNameContains");
+                _extraLatinPrefixes = so.FindProperty("extraLatinPrefixes");
+                _forceRemoteFontPrefixes = so.FindProperty("forceRemoteFontPrefixes");
+                _testLanguage = so.FindProperty("testLanguage");
+                _propertiesReady = _baseBundleUrl != null &&
+                                   _useGlobalLanguage != null &&
+                                   _gameId != null &&
+                                   _bundleFileExtension != null &&
+                                   _bundles != null;
+            }
+            catch (Exception)
+            {
+                _propertiesReady = false;
+            }
+
+            return _propertiesReady;
         }
 
         public override void OnInspectorGUI()
         {
-            serializedObject.Update();
+            if (!_propertiesReady && !TryInitializeProperties())
+            {
+                EditorGUILayout.HelpBox("RemoteFontBundleLoader target is not available. Reselect the object after Unity finishes reloading.", MessageType.Info);
+                return;
+            }
+
+            try
+            {
+                serializedObject.Update();
+            }
+            catch (Exception)
+            {
+                _propertiesReady = false;
+                return;
+            }
 
             DrawRemoteSource();
             DrawBundleMappings();
@@ -49,7 +95,14 @@ namespace FineLocalization.EditorTools
             DrawAdvanced();
             DrawManualTest();
 
-            serializedObject.ApplyModifiedProperties();
+            try
+            {
+                serializedObject.ApplyModifiedProperties();
+            }
+            catch (Exception)
+            {
+                _propertiesReady = false;
+            }
         }
 
         private void DrawRemoteSource()
