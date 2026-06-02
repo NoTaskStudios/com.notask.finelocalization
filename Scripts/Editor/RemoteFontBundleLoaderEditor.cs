@@ -18,6 +18,7 @@ namespace FineLocalization.EditorTools
         private SerializedProperty _bundleFileExtension;
         private SerializedProperty _bundles;
         private SerializedProperty _mainFontAssets;
+        private SerializedProperty _coverageFallbackFontAssets;
         private SerializedProperty _rebuildBatchSize;
         private SerializedProperty _ignoredFontNameContains;
         private SerializedProperty _extraLatinPrefixes;
@@ -52,6 +53,7 @@ namespace FineLocalization.EditorTools
                 _bundleFileExtension = so.FindProperty("bundleFileExtension");
                 _bundles = so.FindProperty("bundles");
                 _mainFontAssets = so.FindProperty("mainFontAssets");
+                _coverageFallbackFontAssets = so.FindProperty("coverageFallbackFontAssets");
                 _rebuildBatchSize = so.FindProperty("rebuildBatchSize");
                 _ignoredFontNameContains = so.FindProperty("ignoredFontNameContains");
                 _extraLatinPrefixes = so.FindProperty("extraLatinPrefixes");
@@ -210,11 +212,20 @@ namespace FineLocalization.EditorTools
             EditorGUILayout.Space(4);
             EditorGUILayout.LabelField("Local Fallback Targets", EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
             EditorGUILayout.PropertyField(_mainFontAssets, new GUIContent("Main Local TMP Fonts"), true);
             EditorGUILayout.HelpBox(
                 "These are local/base fonts that receive the downloaded remote font as a fallback. Put your project's normal UI font here, not the remote CJK font.",
                 MessageType.None
             );
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.PropertyField(_coverageFallbackFontAssets, new GUIContent("Coverage Fallback Fonts"), true);
+            EditorGUILayout.HelpBox(
+                "Fonts added permanently as low-priority fallback to fill glyphs missing from the main font (e.g. ₴ ₹ not covered by Georama). Suggested: Noto Sans Regular SDF. Unlike remote CJK fonts, these are never removed on language change.\n\nLeave EMPTY if the main font is already Noto Sans — no self-fallback needed, no extra memory.",
+                MessageType.None
+            );
+
             EditorGUILayout.EndVertical();
         }
 

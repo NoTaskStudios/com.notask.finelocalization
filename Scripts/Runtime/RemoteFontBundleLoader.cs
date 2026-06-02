@@ -63,6 +63,9 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Fontes principais do projeto que devem receber o fallback remoto diretamente. Recomendo colocar aqui sua fonte base principal, não as fontes remotas CJK.")]
         [SerializeField] private List<TMP_FontAsset> mainFontAssets = new();
 
+        [Tooltip("Fontes de cobertura de glifos — adicionadas permanentemente como fallback de baixa prioridade para suprir caracteres ausentes na fonte principal (ex: ₴ ₹ que Georama não tem). Sugerido: Noto Sans Regular SDF. Nunca removidas ao trocar idioma. DEIXE VAZIO se a fonte principal já é Noto Sans — sem necessidade de fallback de si mesma.")]
+        [SerializeField] private List<TMP_FontAsset> coverageFallbackFontAssets = new();
+
         [Tooltip("Quantidade de TMP_Text rebuildados por frame. Menor = menos travada em celular 2GB; maior = troca de idioma mais rápida.")]
         [SerializeField] private int rebuildBatchSize = 24;
 
@@ -136,6 +139,8 @@ namespace FineLocalization.Scripts.Runtime
 
         private void OnEnable()
         {
+            ApplyCoverageFallbacks();
+
             if (LoadOnLocalizationChanged)
                 LocalizationManager.OnLocalizationChanged += EnsureCurrentLanguageFont;
 
@@ -180,6 +185,56 @@ namespace FineLocalization.Scripts.Runtime
 
             EnsureCurrentLanguageFont();
             _enableEnsureCoroutine = null;
+        }
+
+        /// <summary>
+        /// Injeta <see cref="coverageFallbackFontAssets"/> como fallback de baixa prioridade em todos os
+        /// <see cref="mainFontAssets"/> e nos fallbacks globais do TMP. Executado no <c>OnEnable</c>, antes
+        /// de qualquer troca de idioma. Diferente das fontes remotas CJK, as fontes de cobertura são
+        /// <b>permanentes</b> — nunca removidas ao trocar idioma.
+        /// </summary>
+        private void ApplyCoverageFallbacks()
+        {
+            if (coverageFallbackFontAssets == null || coverageFallbackFontAssets.Count == 0)
+                return;
+
+            for (int i = 0; i < coverageFallbackFontAssets.Count; i++)
+            {
+                var coverageFont = coverageFallbackFontAssets[i];
+                if (coverageFont == null || !IsUsableFontAsset(coverageFont))
+                {
+                    if (coverageFont != null)
+                        FineLocalizationLogger.LogWarning(() => $"[RemoteFontBundleLoader] Coverage fallback ignorado (inválido): {coverageFont.name}");
+                    continue;
+                }
+
+                // Injeta no final do fallback de cada fonte principal (baixa prioridade: CJK remota vem antes).
+                // Pula se a coverage font já É a fonte principal — evita self-fallback e material/textura redundantes.
+                if (mainFontAssets != null)
+                {
+                    for (int j = 0; j < mainFontAssets.Count; j++)
+                    {
+                        var main = mainFontAssets[j];
+                        if (main == null || IsSameFontAsset(main, coverageFont))
+                            continue;
+
+                        main.fallbackFontAssetTable ??= new List<TMP_FontAsset>();
+                        if (!main.fallbackFontAssetTable.Contains(coverageFont))
+                        {
+                            main.fallbackFontAssetTable.Add(coverageFont);
+                            FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Coverage fallback '{coverageFont.name}' → '{main.name}'.");
+                        }
+                    }
+                }
+
+                // Registra também nos fallbacks globais do TMP para cobrir fontes fora de mainFontAssets.
+                var globals = TMP_Settings.fallbackFontAssets;
+                if (globals != null && !globals.Contains(coverageFont))
+                {
+                    globals.Add(coverageFont);
+                    FineLocalizationLogger.Log(() => $"[RemoteFontBundleLoader] Coverage fallback '{coverageFont.name}' → TMP global fallbacks.");
+                }
+            }
         }
 
         public void IgnoreNextLocalizationChanged()
