@@ -329,7 +329,7 @@ O loader observa `LocalizationManager.OnLocalizationChanged` e baixa automaticam
 
 ### Auto-detecção de script Latin (otimização)
 
-O loader detecta automaticamente se o idioma alvo usa **script Latin** (`en`, `pt`, `es`, `fr`, `de`, `it`, `nl`, `sv`, `pl`, `cs`, `tr`, `id`, `vi`, etc. — 50+ prefixos cobertos). Quando for, ele:
+O loader detecta automaticamente se o idioma alvo usa **script Latin** (`en`, `pt`, `es`, `fr`, `de`, `it`, `nl`, `sv`, `pl`, `cs`, `tr`, `id`, `vi`, etc. — 50+ prefixos cobertos, incluindo o código custom `ba-id` do Bahasa Indonésia). Quando for, ele:
 
 - ✅ **Não faz request HTTP** (sem rede)
 - ✅ **Não baixa AssetBundle** (sem alocação/cache de bundle)

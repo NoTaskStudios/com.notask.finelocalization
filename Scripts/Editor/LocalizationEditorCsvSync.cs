@@ -32,7 +32,16 @@ namespace FineLocalization.EditorTools
             "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞß" +
             "àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ" +
             "0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~" +
-            "€£¥¢₹₽₩₫₴₺¿¡…•·";
+            "€£¥¢₹₽₩₫₴₺¿¡…•·" +
+            // Vietnamita (vi-vn): latim com diacríticos estendidos (Latin Extended-A/B + Additional U+1Exx).
+            // 'vi' pula o download remoto, então a fonte base PRECISA conter estes glifos.
+            "ĂăĐđĨĩŨũƠơƯư" +
+            "ẠạẢảẤấẦầẨẩẪẫẬậẮắ" +
+            "ẰằẲẳẴẵẶặẸẹẺẻẼẽẾế" +
+            "ỀềỂểỄễỆệỈỉỊịỌọỎỏ" +
+            "ỐốỒồỔổỖỗỘộỚớỜờỞở" +
+            "ỠỡỢợỤụỦủỨứỪừỬửỮữ" +
+            "ỰựỲỳỴỵỶỷỸỹ";
 
         private const int RequestTimeoutSeconds = 20;
 

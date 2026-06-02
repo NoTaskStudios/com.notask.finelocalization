@@ -86,7 +86,7 @@ namespace FineLocalization.Scripts.Runtime
             "sv", "no", "nb", "nn", "da", "fi", "is", "fo",
             "pl", "cs", "sk", "ro", "hu", "sl", "hr", "bs", "sq", "lt", "lv", "et",
             "tr", "az", "uz", "tk", "kk",
-            "id", "ms", "vi", "tl", "fil",
+            "id", "ba", "ms", "vi", "tl", "fil",   // "ba" cobre o código custom "ba-id" (Bahasa Indonesia); "id" cobre id/id-id
             "ga", "cy", "gd", "br", "kw",
             "sw", "af", "zu", "xh", "yo", "ig", "ha", "so", "rw", "mg", "st", "sn", "ny",
             "lb", "fy", "mt", "ku", "ht", "qu", "gn"
