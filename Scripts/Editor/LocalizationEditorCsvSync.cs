@@ -429,6 +429,10 @@ namespace FineLocalization.EditorTools
             var seenCharacters = new HashSet<char>();
             var charactersBuilder = new StringBuilder();
 
+            // ASCII imprimível completo: espaço (U+0020) até ~ (U+007E).
+            // DEVE vir antes de LatinBaseCharacters para garantir que o espaço (U+0020)
+            // esteja no atlas — sem ele todo texto com espaço quebra no TMP Static.
+            AddAsciiPrintableCharacters(seenCharacters, charactersBuilder);
             AddTextCharacters(LatinBaseCharacters, seenCharacters, charactersBuilder);
 
             EnsureCharactersOutputFolderExists();
