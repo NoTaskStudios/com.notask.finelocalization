@@ -499,16 +499,20 @@ namespace FineLocalization.Scripts.Runtime
             if (string.IsNullOrWhiteSpace(requestedLanguage))
                 return false;
 
-            if (!string.Equals(appliedLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(requestedLanguage, LocalizationManager.DefaultLanguage, StringComparison.OrdinalIgnoreCase))
-            {
+            // Resolve o pedido do mesmo jeito que o LocalizationManager (en -> en-us, pt -> pt-br,
+            // fallbacks regionais/por prefixo). Se a chave resolvida existe nos dados carregados, o
+            // idioma FOI encontrado — mesmo quando resolve para o default (ex.: lang=en -> en-us).
+            var resolvedLanguage = LanguageReader.GetLanguageKey(requestedLanguage);
+            if (LocalizationManager.Dictionary != null && LocalizationManager.Dictionary.ContainsKey(resolvedLanguage))
                 return true;
-            }
 
+            // Idioma pedido não existe na planilha. O ReloadAll/LoadFromCsvMap anterior já resolveu
+            // para o DefaultLanguage (en-us); seguimos o fluxo aplicando esse fallback em vez de travar,
+            // para que os textos atualizem em inglês quando o idioma pedido não está na planilha.
             FineLocalizationLogger.LogWarning(
-                () => $"[FineLocalization] Idioma solicitado '{requestedLanguage}' não foi encontrado nos CSVs carregados. Não aplicando en-us automaticamente."
+                () => $"[FineLocalization] Idioma solicitado '{requestedLanguage}' não encontrado nos CSVs. Aplicando fallback '{appliedLanguage}'."
             );
-            return false;
+            return true;
         }
 
         private static void ApplyDefaultLanguageAfterFontFailure()
