@@ -509,8 +509,10 @@ namespace FineLocalization.Scripts.Runtime
             // Idioma pedido não existe na planilha. O ReloadAll/LoadFromCsvMap anterior já resolveu
             // para o DefaultLanguage (en-us); seguimos o fluxo aplicando esse fallback em vez de travar,
             // para que os textos atualizem em inglês quando o idioma pedido não está na planilha.
+            // Cópia local: um parâmetro 'out' não pode ser capturado dentro da lambda do log (CS1628).
+            var fallbackLanguage = appliedLanguage;
             FineLocalizationLogger.LogWarning(
-                () => $"[FineLocalization] Idioma solicitado '{requestedLanguage}' não encontrado nos CSVs. Aplicando fallback '{appliedLanguage}'."
+                () => $"[FineLocalization] Idioma solicitado '{requestedLanguage}' não encontrado nos CSVs. Aplicando fallback '{fallbackLanguage}'."
             );
             return true;
         }
