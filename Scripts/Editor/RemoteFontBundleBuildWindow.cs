@@ -32,9 +32,15 @@ namespace FineLocalization.EditorTools
 
         private void EnsureConfig()
         {
-            if (_config != null) return;
-            _config = RemoteFontBundleBuildConfig.GetOrCreate();
-            _serializedConfig = new SerializedObject(_config);
+            // Recria o SerializedObject sempre que ele for null (ex.: após domain reload pós-compilação
+            // ou entrada em Play Mode o Unity destrói o SerializedObject mas mantém a referência _config,
+            // fazendo o guard "_config != null" passar e deixar _serializedConfig = null → NullRef na linha
+            // seguinte _serializedConfig.Update()).
+            if (_config == null)
+                _config = RemoteFontBundleBuildConfig.GetOrCreate();
+
+            if (_config != null && _serializedConfig == null)
+                _serializedConfig = new SerializedObject(_config);
         }
 
         private void OnGUI()
