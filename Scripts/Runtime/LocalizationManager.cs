@@ -31,7 +31,6 @@ namespace FineLocalization.Runtime
             set
             {
                 var resolvedLanguage = ResolveLanguage(value);
-                if (_language == resolvedLanguage) return;
                 _language = resolvedLanguage;
                 OnLocalizationChanged();
             }
