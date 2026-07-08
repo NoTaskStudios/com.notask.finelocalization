@@ -14,6 +14,7 @@ namespace FineLocalization.Scripts.Runtime
     {
         [Header("Runtime Settings")]
         [SerializeField] private bool downloadOnStart = true;
+        [SerializeField] private bool useLocalSheet = false;
         [Tooltip("WebGL browsers block Google Sheets export redirects because they do not include CORS headers. Keep this disabled unless your deployment confirms direct Google downloads work.")]
         [SerializeField] private bool allowDirectGoogleDownloadInWebGL = false;
         [Tooltip("Optional URL pattern for a CORS-enabled proxy/CDN. Use {0} for TableId and {1} for gid. Leave empty to use Google Sheets export.")]
@@ -163,7 +164,11 @@ namespace FineLocalization.Scripts.Runtime
             }
             else
             {
-                StartCoroutine(NotifyLocalizationAlreadyReady());
+                if(useLocalSheet)
+                    StartCoroutine(NotifyLocalizationAlreadyReady());
+                else
+                    FineLocalizationLogger.LogWarning("[FineLocalization] Certifique chamar manualmente a atualização da planilha");
+                    //FineLocalizationLogger.LogWarning("[FineLocalization] Make sure the local spreadsheet is up to date.");
             }
         }
 
