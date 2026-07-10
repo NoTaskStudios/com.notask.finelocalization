@@ -802,6 +802,11 @@ namespace FineLocalization.Scripts.Runtime
             Action<bool, string> onComplete)
         {
             var attempts = Mathf.Max(1, maxDownloadAttempts);
+            string lastFailureDetails = null;
+
+            FineLocalizationLogger.Log(
+                () => $"[FineLocalization] Baixando '{sheetName}' (tentativas: {attempts}, timeout: {requestTimeoutSeconds}s): {url}"
+            );
 
             for (var attempt = 1; attempt <= attempts; attempt++)
             {
@@ -819,6 +824,9 @@ namespace FineLocalization.Scripts.Runtime
                         // Se cair em página de login, o arquivo não está público.
                         if (csvContent.Contains("signin/identifier"))
                         {
+                            lastFailureDetails =
+                                "A planilha não está pública (o Google devolveu a página de login). " +
+                                "Compartilhe como 'Qualquer pessoa com o link pode ver'.";
                             FineLocalizationLogger.LogWarning(
                                 () => $"[FineLocalization] Acesso negado ao documento: {sheetName}. " +
                                       $"Tentativa {attempt}/{attempts}."
@@ -832,9 +840,11 @@ namespace FineLocalization.Scripts.Runtime
                     }
                     else
                     {
+                        lastFailureDetails = DescribeRequestFailure(request, url);
+                        var details = lastFailureDetails;
                         FineLocalizationLogger.LogWarning(
                             () => $"[FineLocalization] Falha ao baixar {sheetName}. " +
-                                  $"Tentativa {attempt}/{attempts}. Erro: {request.error}"
+                                  $"Tentativa {attempt}/{attempts}. {details}"
                         );
                     }
                 }
@@ -843,11 +853,38 @@ namespace FineLocalization.Scripts.Runtime
                     yield return new WaitForSecondsRealtime(retryDelaySeconds);
             }
 
-            FineLocalizationLogger.LogWarning(
-                () => $"[FineLocalization] Não foi possível baixar {sheetName} após {attempts} tentativa(s)."
+            // Erro direto no Debug (sem passar pelo gate de EnableLogs): uma planilha que não
+            // baixa deixa o jogo sem tradução em build, e com EnableLogs desligado (default)
+            // a falha seria invisível — impossível de diagnosticar em produção.
+            Debug.LogError(
+                $"[FineLocalization] Não foi possível baixar a planilha '{sheetName}' após {attempts} tentativa(s). {lastFailureDetails}"
             );
 
             onComplete?.Invoke(false, null);
+        }
+
+        private static string DescribeRequestFailure(UnityWebRequest request, string url)
+        {
+            var description =
+                $"Resultado: {request.result}, HTTP: {request.responseCode}, Erro: '{request.error}', URL: {url}";
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // O navegador esconde o motivo real de um bloqueio CORS da Unity: a request volta
+            // como ConnectionError com responseCode 0 e erro genérico ("Unknown Error"). Essa
+            // assinatura é o único jeito de inferir CORS aqui — a mensagem verdadeira
+            // ("blocked by CORS policy") só aparece no console do navegador (F12).
+            if (request.responseCode == 0 &&
+                (request.result == UnityWebRequest.Result.ConnectionError ||
+                 request.result == UnityWebRequest.Result.ProtocolError))
+            {
+                description +=
+                    " | Provável bloqueio de CORS (ou falha de rede): confirme no console do navegador (F12) se há " +
+                    "'blocked by CORS policy'. Se houver, configure csvUrlPatternOverride com um proxy/CDN com CORS " +
+                    "habilitado, ou mantenha allowDirectGoogleDownloadInWebGL desativado para usar os CSVs empacotados.";
+            }
+#endif
+
+            return description;
         }
 
         private void PersistCsvContent(string sheetName, string content)
