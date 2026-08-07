@@ -28,12 +28,20 @@ namespace FineLocalization.Runtime
         public static string Language
         {
             get => _language;
-            set
-            {
-                var resolvedLanguage = ResolveLanguage(value);
-                _language = resolvedLanguage;
+            set => SetLanguage(value, notify: true);
+        }
+
+        /// <summary>
+        /// Aplica o idioma resolvendo apelidos e fallbacks regionais ("pt" → "pt-br", "en" → "en-us").
+        /// <paramref name="notify"/> = false permite preparar tudo (fonte remota, dicionário) e
+        /// disparar um único <see cref="OnLocalizationChanged"/> no fim, em vez de um por etapa.
+        /// </summary>
+        public static void SetLanguage(string language, bool notify)
+        {
+            _language = ResolveLanguage(LanguageReader.GetLanguageKey(language));
+
+            if (notify)
                 OnLocalizationChanged();
-            }
         }
 
         public static void AutoLanguage()

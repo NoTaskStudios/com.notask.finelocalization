@@ -9,6 +9,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.TextCore.LowLevel;
 using UnityEditor.SceneManagement;
+using FineLocalization.Runtime;
 using FineLocalization.Scripts.Runtime;
 
 namespace FineLocalization.EditorTools
@@ -570,7 +571,7 @@ namespace FineLocalization.EditorTools
                     for (int i = 0; i < bundlesProp.arraySize; i++)
                     {
                         var prefix = bundlesProp.GetArrayElementAtIndex(i).FindPropertyRelative("languagePrefix")?.stringValue;
-                        if (RemoteFontBundleLoader.IsSameLanguageOrRoot(prefix, language))
+                        if (LanguageCode.IsSameOrRoot(prefix, language))
                         {
                             matchIndex = i;
                             break;

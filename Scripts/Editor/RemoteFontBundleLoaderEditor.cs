@@ -20,10 +20,8 @@ namespace FineLocalization.EditorTools
         private SerializedProperty _mainFontAssets;
         private SerializedProperty _coverageFallbackFontAssets;
         private SerializedProperty _rebuildBatchSize;
-        private SerializedProperty _ignoredFontNameContains;
         private SerializedProperty _extraLatinPrefixes;
         private SerializedProperty _forceRemoteFontPrefixes;
-        private SerializedProperty _testLanguage;
         private bool _propertiesReady;
 
         private void OnEnable()
@@ -55,10 +53,8 @@ namespace FineLocalization.EditorTools
                 _mainFontAssets = so.FindProperty("mainFontAssets");
                 _coverageFallbackFontAssets = so.FindProperty("coverageFallbackFontAssets");
                 _rebuildBatchSize = so.FindProperty("rebuildBatchSize");
-                _ignoredFontNameContains = so.FindProperty("ignoredFontNameContains");
                 _extraLatinPrefixes = so.FindProperty("extraLatinPrefixes");
                 _forceRemoteFontPrefixes = so.FindProperty("forceRemoteFontPrefixes");
-                _testLanguage = so.FindProperty("testLanguage");
                 _propertiesReady = _baseBundleUrl != null &&
                                    _useGlobalLanguage != null &&
                                    _gameId != null &&
@@ -95,7 +91,6 @@ namespace FineLocalization.EditorTools
             DrawBundleMappings();
             DrawFallbackTargets();
             DrawAdvanced();
-            DrawManualTest();
 
             try
             {
@@ -235,18 +230,13 @@ namespace FineLocalization.EditorTools
             EditorGUILayout.LabelField("Advanced", EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.PropertyField(_rebuildBatchSize);
-            EditorGUILayout.PropertyField(_ignoredFontNameContains, true);
             EditorGUILayout.PropertyField(_extraLatinPrefixes, true);
             EditorGUILayout.PropertyField(_forceRemoteFontPrefixes, true);
-            EditorGUILayout.EndVertical();
-        }
-
-        private void DrawManualTest()
-        {
-            EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("Manual Test", EditorStyles.boldLabel);
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.PropertyField(_testLanguage);
+            EditorGUILayout.HelpBox(
+                "Para testar um idioma em Play, use o menu de contexto do componente: " +
+                "\"Fine Localization/Recarregar fonte do idioma atual\".",
+                MessageType.None
+            );
             EditorGUILayout.EndVertical();
         }
 

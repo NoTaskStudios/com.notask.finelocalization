@@ -18,12 +18,17 @@ Através de uma planilha `.csv` com chaves e valores por idioma, o sistema permi
 - 📦 **Bundle Builder dinâmico** de fontes remotas para WebGL (qualquer idioma)
 - 🪄 Fallback automático quando uma chave está ausente (retorna a própria key)
 - ⚡ Otimizado para **WebGL/2 GB de RAM**: parser sem alocações desnecessárias, scans únicos da cena, sem cópias defensivas de dicionário
-- 📢 Eventos para reagir a download e troca de idioma:
-  ```csharp
-  LocalizationManager.OnLocalizationChanged           // idioma trocou
-  RuntimeLocaleDownloader.OnDownloadLocalizationComplete   // download por source terminou
-  RuntimeLocaleDownloader.OnAllSheetsDownloadedComplete    // ciclo completo terminou
-  ```
+- 🎯 **API única** (`Localization`) para ler texto, trocar idioma e saber quando está pronto
+
+```csharp
+using FineLocalization.Runtime;
+
+Localization.OnReady += ok => BuildUI();          // pronto pra usar (late-subscriber safe)
+Localization.OnLanguageChanged += RefreshLabels;  // idioma trocou
+
+label.text = Localization.Get("menu.start");
+Localization.SetLanguage("ja-jp");                // pode chamar a qualquer momento
+```
 
 ---
 
@@ -184,85 +189,102 @@ O texto é atualizado automaticamente quando o idioma muda.
 using FineLocalization.Runtime;
 
 // Buscar uma tradução
-string label = LocalizationManager.Localize("menu.start");
+string label = Localization.Get("menu.start");
 
 // Com formatação
-string greeting = LocalizationManager.Localize("greeting.user", "Valdeci");
+string greeting = Localization.Get("greeting.user", "Valdeci");
 
-// Trocar idioma
-LocalizationManager.Language = "pt-br";
+// Trocar idioma (baixa a fonte do idioma antes de atualizar os textos, se precisar)
+Localization.SetLanguage("pt-br");
 ```
 
 ---
 
-## Runtime: download + bundled CSVs (WebGL/Mobile/Desktop)
+## Runtime
 
-Adicione o componente `RuntimeLocaleDownloader` em um GameObject persistente da cena.
+Adicione o componente `RuntimeLocaleDownloader` em um GameObject persistente da cena inicial. Ele é a configuração da API `Localization`.
+
+### O download nunca espera pelo idioma
+
+Um CSV do FineLocalization contém **todas** as colunas de idioma. Por isso o pipeline é:
+
+```
+1. carrega os CSVs         ← começa no Start(), independe do idioma
+2. resolve o idioma        ← cadeia de prioridade, sempre termina em algo
+3. garante a fonte
+4. aplica + OnReady
+```
+
+Trocar de idioma depois é instantâneo: os dados já estão em memória e só a fonte remota (quando houver) vai à rede.
 
 ### Opções no Inspector
 
 | Campo | O que faz |
 |-------|-----------|
-| `downloadOnStart` | Se **true**, baixa as planilhas no `Start()`. Se **false**, usa direto os TextAssets bundled e dispara os eventos como se tivesse baixado |
-| `allowDirectGoogleDownloadInWebGL` | Em WebGL, Google Sheets bloqueia por CORS. Mantenha **false** a menos que seu deploy confirme que funciona |
-| `csvUrlPatternOverride` | URL alternativa (proxy/CDN com CORS) — use `{0}` para TableId e `{1}` para gid |
-| `maxDownloadAttempts` | Quantas tentativas por sheet |
-| `requestTimeoutSeconds` | Timeout HTTP |
-| `retryDelaySeconds` | Espera entre tentativas |
-| `delayBetweenSheets` | Espera entre downloads de sheets |
-| `remoteFontBundleLoader` | (opcional) Carrega bundle de fonte remoto antes de aplicar a tradução |
+| `Csv Source` | **Auto** (padrão): baixa em Editor/Desktop/Mobile; em WebGL usa os CSVs embutidos, porque o Google Sheets responde ao export sem cabeçalho CORS. **Remote**: sempre baixa. **Bundled**: nunca baixa |
+| `Csv Url Override` | URL de proxy/CDN com CORS — `{0}` = TableId, `{1}` = gid. Preenchido, liga o download também em WebGL no modo Auto |
+| `Startup Language` | Força um idioma no boot, ignorando URL e sistema. Vazio = usa a cadeia |
+| `Usar ?lang= da URL` | Lê `?lang=`, `?locale=`, `?culture=`, `?language=`, `?lng=` da URL de lançamento |
+| `Usar idioma do sistema` | Usa o idioma do SO/navegador quando nada mais define um |
+| `Fallback Language` | Idioma final da cadeia, e destino de segurança quando a fonte remota falha |
+| `Remote Font Loader` | (opcional) Vazio = procura um `RemoteFontBundleLoader` na cena, inclusive inativo |
+| `Rede` | Tentativas, timeout e espera entre tentativas |
 
-### Padrão recomendado para subscribers
+### Cadeia de resolução do idioma
 
-Para que **componentes que se registram tarde** (depois do evento já ter disparado) também sejam notificados, use o padrão com a flag estática `IsLocalizationReady`:
+```
+Localization.SetLanguage()  →  Startup Language  →  ?lang= da URL  →  idioma do sistema  →  Fallback
+```
+
+O inspector mostra essa cadeia montada com a sua configuração atual, então dá pra ver qual idioma vai sair no boot sem entrar em Play.
+
+`Localization.SetLanguage()` pode ser chamado **a qualquer momento** — inclusive de um `Awake` que rode antes do downloader, ou antes da planilha terminar de baixar. O pedido fica pendente e é aplicado assim que os dados chegam.
+
+### Saber quando está pronto
 
 ```csharp
-using FineLocalization.Scripts.Runtime;
+using FineLocalization.Runtime;
 
 public class MyUI : MonoBehaviour
 {
-    private void Awake()
+    private void OnEnable()
     {
-        RuntimeLocaleDownloader.OnAllSheetsDownloadedComplete += OnLocReady;
-
-        // Cobre o caso de chegarmos tarde — a flag estática diz se o
-        // evento já disparou antes deste Awake rodar.
-        if (RuntimeLocaleDownloader.IsLocalizationReady)
-            OnLocReady(RuntimeLocaleDownloader.LastLocalizationSucceeded);
+        // Quem se inscreve depois do evento já ter disparado é chamado na hora.
+        // Não existe janela de corrida — nada de checar flag antes.
+        Localization.OnReady += OnLocalizationReady;
+        Localization.OnLanguageChanged += Refresh;
     }
 
-    private void OnDestroy()
+    private void OnDisable()
     {
-        RuntimeLocaleDownloader.OnAllSheetsDownloadedComplete -= OnLocReady;
+        Localization.OnReady -= OnLocalizationReady;
+        Localization.OnLanguageChanged -= Refresh;
     }
 
-    private void OnLocReady(bool success)
-    {
-        if (!success) return;
-        // Construa sua UI usando LocalizationManager.Localize(...)
-    }
+    private void OnLocalizationReady(bool success) => Refresh();
+
+    private void Refresh() => label.text = Localization.Get("menu.start");
 }
 ```
 
-> Os eventos `OnDownloadLocalizationComplete` e `OnAllSheetsDownloadedComplete` disparam **igual** quando `downloadOnStart = false` — usando os CSVs bundled. Projetos antigos não quebram.
-
-### Reagir a troca de idioma
+### API completa
 
 ```csharp
-private void OnEnable()
-{
-    LocalizationManager.OnLocalizationChanged += Refresh;
-}
+Localization.Get(key)                    // tradução; devolve a key se não achar
+Localization.Get(key, args)              // com string.Format
+Localization.Has(key)
 
-private void OnDisable()
-{
-    LocalizationManager.OnLocalizationChanged -= Refresh;
-}
+Localization.SetLanguage(lang)           // troca de idioma
+Localization.SetLanguage(lang, ok => {}) // com callback do resultado
+Localization.Reload(ok => {})            // re-baixa as planilhas sem reiniciar o jogo
 
-private void Refresh()
-{
-    label.text = LocalizationManager.Localize(_key);
-}
+Localization.Language                    // idioma aplicado
+Localization.AvailableLanguages          // idiomas presentes nas planilhas
+Localization.IsReady                     // dados carregados e idioma aplicado
+Localization.LoadSucceeded               // false = planilha ou fonte falhou
+
+Localization.OnReady                     // Action<bool>, late-subscriber safe
+Localization.OnLanguageChanged           // Action
 ```
 
 ---
@@ -315,17 +337,24 @@ Como esses `.txt` ficam em pasta `Editor`, eles não entram na build.
 ### Usar em runtime
 
 Adicione o componente `RemoteFontBundleLoader` na cena e configure:
-- `baseBundleUrl` — URL da pasta no CDN, ex: `https://cdn.site.com/fonts/`
-- `useGlobalLanguage` — **ligado** = fontes globais em `/languages/font_<lang>.ft` (mesma pasta pra todos os jogos, com todos os caracteres, bundles maiores); **desligado** = fontes por jogo em `/languages/<gameId>/font_<lang>.ft` (otimizadas)
-- `gameId` — (só quando `useGlobalLanguage` desligado) segmento por jogo na URL. Vazio = usa o **Product Name** do Player Settings (minúsculo, sem espaços). Ex: `trevor`
-- `bundleFileExtension` — mantenha `.ft` para os bundles gerados pelo builder
-- `bundles` — mapeamentos remotos: prefixo de idioma + nome exato do TMP_FontAsset dentro do AssetBundle baixado
-- `mainFontAssets` — fontes locais/base que recebem a fonte remota como fallback
+- `Base Bundle URL` — URL da pasta no CDN, ex: `https://cdn.site.com/languages/`
+- `Global Language` — **ligado** = fontes globais em `/languages/font_<lang>.ft` (mesma pasta pra todos os jogos, com todos os caracteres, bundles maiores); **desligado** = fontes por jogo em `/languages/<gameId>/font_<lang>.ft` (otimizadas)
+- `Game Id` — (só com `Global Language` desligado) segmento por jogo na URL. Vazio = usa o **Product Name** do Player Settings (minúsculo, sem espaços). Ex: `trevor`
+- `Bundle Extension` — mantenha `.ft` para os bundles gerados pelo builder
+- `Remote Font Mappings` — prefixo de idioma + nome exato do TMP_FontAsset dentro do AssetBundle
+- `Main Local TMP Fonts` — fontes base do projeto que recebem a fonte remota como fallback
+- `Coverage Fallback Fonts` — fallback **permanente** de baixa prioridade para glifos soltos (₴, ₹) que a fonte principal não tem. Nunca removido ao trocar de idioma
 
-Com `useGlobalLanguage` **desligado**, `baseBundleUrl = https://cdn.site.com/fonts/`, `gameId = trevor`, `languagePrefix = ja` e extensão `.ft`,
-o loader baixa `https://cdn.site.com/fonts/trevor/font_ja-jp.ft` (vazio → Product Name). Com `useGlobalLanguage` **ligado**, baixa `https://cdn.site.com/fonts/font_ja-jp.ft`.
+Com `Global Language` **desligado**, `Base Bundle URL = https://cdn.site.com/languages/`, `Game Id = trevor` e `languagePrefix = ja`,
+o loader baixa `https://cdn.site.com/languages/trevor/font_ja-jp.ft`. Com `Global Language` **ligado**, baixa `https://cdn.site.com/languages/font_ja-jp.ft`.
 
-O loader observa `LocalizationManager.OnLocalizationChanged` e baixa automaticamente quando o idioma muda. Faz **uma única varredura** da cena e força rebuild dos textos ativos — sem `SetActive(false/true)` (que provoca reflow total).
+Havendo um `RuntimeLocaleDownloader` na cena, é ele quem comanda o loader — na ordem certa: **fonte primeiro, textos depois**, com um único rebuild. Sem downloader, o loader se vira sozinho reagindo a `OnLanguageChanged`.
+
+Ao trocar de idioma, a fonte remota do idioma anterior é **desinstalada** das tabelas de fallback, então o atlas antigo não fica pendurado consumindo memória.
+
+O rebuild dos textos é feito em lotes (`Rebuild Batch Size`, padrão 24 por frame) — sem `SetActive(false/true)`, que provocaria reflow total.
+
+Para testar um idioma em Play: menu de contexto do componente → **Fine Localization/Recarregar fonte do idioma atual**.
 
 ### Auto-detecção de script Latin (otimização)
 
@@ -340,12 +369,14 @@ Isso parte do princípio que **as fontes padrão do seu projeto já cobrem Latin
 
 ### Quando ajustar a auto-detecção?
 
-No Inspector do `RemoteFontBundleLoader`, há um header **Script Detection (Optimization)** com:
+No Inspector do `RemoteFontBundleLoader`, no header **Advanced**:
 
 | Campo | O que faz |
 |-------|-----------|
-| `extraLatinPrefixes` | Adicione prefixos extras a tratar como Latin (ex: `tlh`, `eo`) — não baixam bundle |
-| `forceRemoteFontPrefixes` | **Override**: força download mesmo para idiomas Latin. Use se sua fonte padrão é minimalista e não tem acentos completos (ex: `tr`, `vi`) |
+| `Extra Latin Prefixes` | Prefixos extras a tratar como Latin (ex: `tlh`, `eo`) — não baixam bundle |
+| `Force Remote Font Prefixes` | **Override**: força download mesmo para idiomas Latin. Use se sua fonte padrão é minimalista e não tem acentos completos (ex: `tr`, `vi`) |
+
+> A tabela de prefixos Latin vive num único lugar (`LanguageCode`), compartilhada pelo downloader e pelo loader.
 
 > 💡 Idiomas **não-Latin** (CJK, Árabe, Hebraico, Tailandês, Devanagari, Cirílico, Grego, etc.) **sempre** caem no fluxo de download — só procuram bundle se você tiver criado config pra eles no `RemoteFontBundleBuildConfig`.
 
@@ -384,18 +415,61 @@ Boas práticas já aplicadas no pacote (você não precisa fazer nada extra):
 - `Regex.Replace` com `MatchEvaluator` (single pass) em vez de N `Replace()` no texto inteiro
 - `StringBuilder` para concatenação em loops (parser e substituições CJK)
 - Sem cópias defensivas de dicionário em `LoadFromCsvMap`
-- `RemoteFontBundleLoader` faz **uma única varredura da cena** (com `FindObjectsByType` quando disponível), deduplicando fontes via `HashSet` estático reutilizável
-- `RemoteFontBundleLoader` **não** toggla `SetActive(false/true)` em todos os textos — só `ForceMeshUpdate`
+- **Trocar de idioma é O(1)**: os CSVs são parseados uma vez só; a troca apenas reaponta o dicionário. Na v2 cada troca re-parseava todas as planilhas
+- **Um único `OnLanguageChanged` por troca**: a fonte é baixada e instalada *antes* de notificar, em vez de disparar um evento por etapa
+- `RemoteFontBundleLoader` faz **uma única varredura da cena** por operação, deduplicando fontes via `HashSet`
+- Rebuild em lotes, sem `SetActive(false/true)` — só `ForceMeshUpdate`
+- Fonte remota do idioma anterior é desinstalada na troca — o atlas antigo não fica retido
 - Logs gateados por `EnableLogs` via `FineLocalizationLogger` (zero-alloc quando off)
 - Build processor exige TextAssets bundled em WebGL — evita falhas em runtime quando o CDN está fora
 
 ### Recomendações de projeto
 
 1. **Desligue `EnableLogs`** nas builds de release
-2. Use **`downloadOnStart = false`** em WebGL se você bundleou os CSVs como TextAsset (mais rápido — sem rede)
+2. Use **`Csv Source = Auto`** — ele já escolhe bundled em WebGL e remoto nas demais plataformas
 3. Use **Remote Fonts** para idiomas com muitos glyphs
 4. Mantenha as planilhas **enxutas** — uma chave por linha; evite valores vazios desnecessários
-5. Configure `delayBetweenSheets` entre 0.05–0.1s para não saturar a stack de rede em mobile
+5. Sincronize as planilhas no Editor antes de todo build de release
+
+---
+
+## Migração v2 → v3
+
+A v3 é **breaking**, mas os componentes continuam nos mesmos arquivos: as cenas não perdem referência e a configuração dos campos que sobreviveram é preservada. O que muda:
+
+### API
+
+| v2 | v3 |
+|----|----|
+| `RuntimeLocaleDownloader.SetRequestedLanguage(lang)` | `Localization.SetLanguage(lang)` |
+| `RuntimeLocaleDownloader.OnAllSheetsDownloadedComplete` | `Localization.OnReady` |
+| `RuntimeLocaleDownloader.OnDownloadLocalizationComplete` | `Localization.OnReady` |
+| `RuntimeLocaleDownloader.IsLocalizationReady` | `Localization.IsReady` |
+| `RuntimeLocaleDownloader.LastLocalizationSucceeded` | `Localization.LoadSucceeded` |
+| `LocalizationManager.Localize(key)` | `Localization.Get(key)` |
+| `LocalizationManager.OnLocalizationChanged` | `Localization.OnLanguageChanged` |
+| `RemoteFontBundleLoader.IsRemoteFontReady` | `RemoteFontBundleLoader.IsReady` |
+| `RemoteFontBundleLoader.OnRemoteFontDownloadComplete` | `RemoteFontBundleLoader.OnFontReady` |
+
+Os nomes antigos continuam funcionando marcados como `[Obsolete]` — o projeto compila, com aviso indicando o substituto. `LocalizationManager` segue público e funcional; `Localization` é apenas a fachada recomendada.
+
+### Campos do Inspector removidos
+
+| Campo v2 | O que fazer |
+|----------|-------------|
+| `downloadOnStart` / `useLocalSheet` | `Csv Source`: **Bundled** para o antigo `false`, **Auto** para `true` |
+| `allowDirectGoogleDownloadInWebGL` | `Csv Source = Remote` + `Csv Url Override` |
+| `csvUrlPatternOverride` | Renomeado para `Csv Url Override` |
+| `waitForExplicitRequestedLanguage` | **Removido** — era a causa do travamento; o download não espera mais por idioma |
+| `requestedLanguageWaitTimeoutSeconds` | **Removido** pelo mesmo motivo |
+| `acceptLocalizationManagerLanguageAsRequested` | **Removido** — `LocalizationManager.Language = x` sempre funciona |
+| `loadRemoteFontBeforeApplyingLocalization` | **Removido** — implícito quando há um loader |
+| `initialLanguageOverride` | Renomeado para `Startup Language` |
+| `delayBetweenSheets` | **Removido** |
+| `ignoredFontNameContains` (loader) | **Removido** — o loader identifica as próprias fontes pelo mapeamento configurado |
+| `testLanguage` (loader) | Menu de contexto **Fine Localization/Recarregar fonte do idioma atual** |
+
+> ⚠️ Se o seu jogo dependia de `waitForExplicitRequestedLanguage = true` para não abrir em inglês antes do idioma chegar do host, use `Localization.SetLanguage()` normalmente — a troca depois do boot é instantânea porque os dados já estão em memória. Se ainda quiser segurar a UI, espere pelo callback: `Localization.SetLanguage(lang, ok => ShowUI())`.
 
 ---
 
