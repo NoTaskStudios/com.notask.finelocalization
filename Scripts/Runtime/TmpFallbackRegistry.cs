@@ -103,6 +103,7 @@ namespace FineLocalization.Scripts.Runtime
 
             var seen = new HashSet<TMP_FontAsset>();
             var hasMainFonts = false;
+            var installed = 0;
 
             if (mainFonts != null)
             {
@@ -112,7 +113,8 @@ namespace FineLocalization.Scripts.Runtime
                         continue;
 
                     hasMainFonts = true;
-                    TryPrepend(mainFonts[i], remote, seen);
+                    if (TryPrepend(mainFonts[i], remote, seen))
+                        installed++;
                 }
             }
 
@@ -121,18 +123,21 @@ namespace FineLocalization.Scripts.Runtime
             // localização gateando o passo de boot — não tem texto nenhum aqui, e o idioma
             // aplicava sem nunca trocar o glifo. Patch no asset da fonte default cobre isso,
             // porque a tabela de fallback é do asset e todo texto criado depois herda.
-            if (!hasMainFonts)
-                TryPrepend(TMP_Settings.defaultFontAsset, remote, seen);
+            if (!hasMainFonts && TryPrepend(TMP_Settings.defaultFontAsset, remote, seen))
+                installed++;
 
             if (sceneTexts != null)
             {
                 for (int i = 0; i < sceneTexts.Length; i++)
-                    TryPrepend(sceneTexts[i] != null ? sceneTexts[i].font : null, remote, seen);
+                {
+                    if (TryPrepend(sceneTexts[i] != null ? sceneTexts[i].font : null, remote, seen))
+                        installed++;
+                }
             }
 
             TmpFontRepair.ClearFallbackMaterialCache();
 
-            var targets = seen.Count;
+            var targets = installed;
             FineLocalizationLogger.Log(() =>
                 $"[FineLocalization] Fallback de '{remote.name}' instalado na lista global e em {targets} fonte(s). " +
                 (hasMainFonts
@@ -213,16 +218,18 @@ namespace FineLocalization.Scripts.Runtime
 
         // ------------------------------------------------------------------ Interno
 
-        private static void TryPrepend(TMP_FontAsset target, TMP_FontAsset remote, HashSet<TMP_FontAsset> seen)
+        /// <summary>Devolve true quando o fallback foi de fato instalado em <paramref name="target"/>.</summary>
+        private static bool TryPrepend(TMP_FontAsset target, TMP_FontAsset remote, HashSet<TMP_FontAsset> seen)
         {
             if (target == null || IsSameAsset(target, remote) || SafeIsManaged(target))
-                return;
+                return false;
 
             if (!seen.Add(target) || !ValidateTree(target))
-                return;
+                return false;
 
             Prepend(EnsureTable(target), remote);
             TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, target);
+            return true;
         }
 
         private static void Prepend(List<TMP_FontAsset> table, TMP_FontAsset font)

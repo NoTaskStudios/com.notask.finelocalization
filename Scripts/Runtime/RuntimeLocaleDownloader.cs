@@ -337,7 +337,7 @@ namespace FineLocalization.Scripts.Runtime
             // final, e a fonte tem que seguir esse código. Resolver a fonte primeiro deixava um
             // pedido de "cn" baixar o atlas Simplificado enquanto o texto podia cair numa coluna
             // Tradicional — tofu silencioso, com success == true.
-            EnsureDictionaryParsed(requestedCode);
+            EnsureDictionaryParsed();
             var target = LanguageCode.SelectBest(requestedCode, LocalizationManager.Dictionary)
                          ?? FallbackShapeFor(requestedCode);
 
@@ -400,15 +400,22 @@ namespace FineLocalization.Scripts.Runtime
         }
 
         /// <summary>
-        /// Parseia os CSVs uma única vez, sem escolher idioma. As trocas seguintes só reapontam o
-        /// dicionário. Trocar de idioma na v2 re-parseava todas as planilhas — aqui é O(1).
+        /// Parseia os CSVs uma única vez, <b>sem trocar o idioma aplicado</b>. As trocas seguintes
+        /// só reapontam o dicionário. Trocar de idioma na v2 re-parseava todas as planilhas — aqui
+        /// é O(1).
+        ///
+        /// O idioma corrente é preservado de propósito. <c>LoadFromCsvMap</c> aplica o idioma que
+        /// recebe, e <c>notify: false</c> apenas suprime o evento — o <c>_language</c> muda de
+        /// imediato. Passar o idioma novo aqui fazia os textos exibirem o idioma novo com a fonte
+        /// antiga durante todo o download da fonte, e o TMP enchia o console de "character not
+        /// found" até o rebuild. A troca tem que acontecer depois da fonte estar pronta.
         /// </summary>
-        private void EnsureDictionaryParsed(string preferredLanguage)
+        private void EnsureDictionaryParsed()
         {
             if (_dictionaryLoaded && LocalizationManager.Dictionary.Count > 0)
                 return;
 
-            LocalizationManager.LoadFromCsvMap(_csv, preferredLanguage, notify: false);
+            LocalizationManager.LoadFromCsvMap(_csv, LocalizationManager.Language, notify: false);
             _dictionaryLoaded = LocalizationManager.Dictionary.Count > 0;
         }
 
