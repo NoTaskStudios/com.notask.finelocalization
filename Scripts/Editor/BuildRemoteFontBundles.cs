@@ -19,33 +19,16 @@ namespace FineLocalization.EditorTools
     public static class BuildRemoteFontBundles
     {
         private const string DefaultOutputFolder = "AssetBundles/WebGL/Fonts";
-        private const string DefaultGlobalOutputFolder = "AssetBundles/WebGL/GlobalFonts";
         private const string BundleFileExtension = ".ft";
         private const string GeneratedCharactersFolder = "Assets/FineLocalization/Editor/GeneratedCharacters";
         private const string LanguageCharactersTxtPrefix = "characters_";
-
-        private enum BuildOutputKind
-        {
-            PerGame,
-            Global
-        }
+        private const string LogPrefix = "[Fonts Bundle]";
 
         [MenuItem("Tools/Fine Localization/WebGL Remote Fonts/Build Bundles Now", false, 61)]
         public static void BuildWebGlFontBundles()
         {
-            BuildWebGlFontBundles(BuildOutputKind.PerGame);
-        }
-
-        [MenuItem("Tools/Fine Localization/WebGL Remote Fonts/Global/Build Global Bundles Now", false, 63)]
-        public static void BuildWebGlGlobalFontBundles()
-        {
-            BuildWebGlFontBundles(BuildOutputKind.Global);
-        }
-
-        private static void BuildWebGlFontBundles(BuildOutputKind outputKind)
-        {
             var config = RemoteFontBundleBuildConfig.GetOrCreate();
-            var logPrefix = outputKind == BuildOutputKind.Global ? "[Global Fonts Bundle]" : "[Fonts Bundle]";
+            var logPrefix = LogPrefix;
             if (config == null)
             {
                 Debug.LogError($"{logPrefix} RemoteFontBundleBuildConfig nao pôde ser carregado/criado.");
@@ -61,7 +44,9 @@ namespace FineLocalization.EditorTools
                 return;
             }
 
-            var output = GetOutputFolder(config, outputKind);
+            var output = string.IsNullOrWhiteSpace(config.outputFolder)
+                ? DefaultOutputFolder
+                : config.outputFolder;
 
             if (!Directory.Exists(output))
                 Directory.CreateDirectory(output);
@@ -156,25 +141,19 @@ namespace FineLocalization.EditorTools
                 return;
             }
 
+            var sizes = new StringBuilder();
+            foreach (var build in builds)
+            {
+                var file = Path.Combine(output, build.assetBundleName);
+                if (File.Exists(file))
+                    sizes.AppendLine($"  {build.assetBundleName,-20} {new FileInfo(file).Length / 1024f,8:0.0} KB");
+            }
+
             Debug.Log(
-                $"{logPrefix} OK — {builds.Count} bundle(s) gerados em:\n{Path.GetFullPath(output)}"
+                $"{logPrefix} OK — {builds.Count} bundle(s) em {Path.GetFullPath(output)}\n{sizes}"
             );
 
             AssetDatabase.Refresh();
-        }
-
-        private static string GetOutputFolder(RemoteFontBundleBuildConfig config, BuildOutputKind outputKind)
-        {
-            if (outputKind == BuildOutputKind.Global)
-            {
-                return string.IsNullOrWhiteSpace(config.globalOutputFolder)
-                    ? DefaultGlobalOutputFolder
-                    : config.globalOutputFolder;
-            }
-
-            return string.IsNullOrWhiteSpace(config.outputFolder)
-                ? DefaultOutputFolder
-                : config.outputFolder;
         }
 
         private static string EnsureBundleFileExtension(string bundleName)

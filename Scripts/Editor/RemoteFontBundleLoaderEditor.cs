@@ -13,7 +13,6 @@ namespace FineLocalization.EditorTools
     public class RemoteFontBundleLoaderEditor : UnityEditor.Editor
     {
         private SerializedProperty _baseBundleUrl;
-        private SerializedProperty _useGlobalLanguage;
         private SerializedProperty _gameId;
         private SerializedProperty _bundleFileExtension;
         private SerializedProperty _bundles;
@@ -46,7 +45,6 @@ namespace FineLocalization.EditorTools
             {
                 var so = serializedObject;
                 _baseBundleUrl = so.FindProperty("baseBundleUrl");
-                _useGlobalLanguage = so.FindProperty("useGlobalLanguage");
                 _gameId = so.FindProperty("gameId");
                 _bundleFileExtension = so.FindProperty("bundleFileExtension");
                 _bundles = so.FindProperty("bundles");
@@ -56,7 +54,6 @@ namespace FineLocalization.EditorTools
                 _extraLatinPrefixes = so.FindProperty("extraLatinPrefixes");
                 _forceRemoteFontPrefixes = so.FindProperty("forceRemoteFontPrefixes");
                 _propertiesReady = _baseBundleUrl != null &&
-                                   _useGlobalLanguage != null &&
                                    _gameId != null &&
                                    _bundleFileExtension != null &&
                                    _bundles != null;
@@ -107,29 +104,15 @@ namespace FineLocalization.EditorTools
             EditorGUILayout.LabelField("Remote Bundle Source", EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.PropertyField(_baseBundleUrl, new GUIContent("Base Bundle URL"));
-            EditorGUILayout.PropertyField(_useGlobalLanguage, new GUIContent("Global Language"));
-
-            if (!_useGlobalLanguage.boolValue)
-                DrawGameIdWithPlaceholder();
-
+            DrawGameIdWithPlaceholder();
             EditorGUILayout.PropertyField(_bundleFileExtension, new GUIContent("Bundle Extension"));
 
-            if (_useGlobalLanguage.boolValue)
-            {
-                EditorGUILayout.HelpBox(
-                    "Global Language ON: Base + /font_<languagePrefix> + Extension — mesma pasta /languages/ pra todos os jogos. " +
-                    "Ex: .../languages/font_ja-jp.ft. Use com fontes que contêm todos os caracteres (bundles maiores).",
-                    MessageType.None
-                );
-            }
-            else
-            {
-                EditorGUILayout.HelpBox(
-                    "Global Language OFF: Base + /<Game Id> + /font_<languagePrefix> + Extension — fontes otimizadas por jogo. " +
-                    "Ex: .../languages/trevor/font_ja-jp.ft. Game Id vazio = Product Name do Player Settings.",
-                    MessageType.None
-                );
-            }
+            EditorGUILayout.HelpBox(
+                "URL final: Base + /<Game Id> + /font_<languagePrefix> + Extension — um bundle por jogo, " +
+                "assado só com os caracteres daquelas planilhas. Ex: .../languages/trevor/font_ja-jp.ft. " +
+                "Game Id vazio = Product Name do Player Settings.",
+                MessageType.None
+            );
 
             EditorGUILayout.EndVertical();
         }
@@ -249,19 +232,11 @@ namespace FineLocalization.EditorTools
             var extension = string.IsNullOrWhiteSpace(_bundleFileExtension.stringValue) ? ".ft" : _bundleFileExtension.stringValue.Trim();
             var fileName = $"font_{normalized}{extension}";
 
-            string path;
-            if (_useGlobalLanguage.boolValue)
-            {
-                path = fileName;
-            }
-            else
-            {
-                var game = string.IsNullOrWhiteSpace(_gameId.stringValue)
-                    ? RemoteFontBundleLoader.GetDefaultGameId()
-                    : _gameId.stringValue.Trim();
-                path = string.IsNullOrEmpty(game) ? fileName : $"{game}/{fileName}";
-            }
+            var game = string.IsNullOrWhiteSpace(_gameId.stringValue)
+                ? RemoteFontBundleLoader.GetDefaultGameId()
+                : _gameId.stringValue.Trim();
 
+            var path = string.IsNullOrEmpty(game) ? fileName : $"{game}/{fileName}";
             EditorGUILayout.LabelField("Runtime Bundle Path", path, EditorStyles.miniLabel);
         }
 

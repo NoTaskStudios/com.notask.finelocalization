@@ -75,9 +75,7 @@ Tools/Fine Localization/
 ├── WebGL Remote Fonts/
 │   ├── Open Bundle Builder Window
 │   ├── Generate Font Assets From Characters
-│   ├── Build Bundles Now
-│   └── Global/
-│       └── Build Global Bundles Now
+│   └── Build Bundles Now
 │
 ├── Migrate Legacy Components             ← migra componentes do pacote antigo
 ├── Reset Settings to Defaults
@@ -314,10 +312,8 @@ Idiomas com **muitos glyphs** (chinês, japonês, coreano, tailandês, árabe, h
    - Defina **Bundle name** sem extensão (ex: `font_ar`, `font_he`, `font_vi`)
    - Arraste a **pasta** que contém os `TMP_FontAsset` desse idioma
    - A janela valida e mostra `✔ N TMP_FontAsset(s) em '...'`
-4. Clique em **▶ Build Game Bundles**.
-   Os arquivos são gerados em `AssetBundles/WebGL/Fonts` com extensão `.ft` (ex: `font_ja-jp.ft`).
-
-Para gerar os bundles globais, use **Tools → Fine Localization → WebGL Remote Fonts → Global → Build Global Bundles Now** ou o botão **▶ Build Global Bundles**. Eles saem em `AssetBundles/WebGL/GlobalFonts` e só precisam ser recriados quando a fonte global mudar.
+4. Clique em **▶ Build Bundles**.
+   Os arquivos são gerados em `AssetBundles/WebGL/Fonts` com extensão `.ft` (ex: `font_ja-jp.ft`), e o log lista o tamanho de cada um.
 
 > A lista é totalmente dinâmica — adicione/remova quantos idiomas quiser. **Nada é hardcoded.**
 
@@ -338,15 +334,14 @@ Como esses `.txt` ficam em pasta `Editor`, eles não entram na build.
 
 Adicione o componente `RemoteFontBundleLoader` na cena e configure:
 - `Base Bundle URL` — URL da pasta no CDN, ex: `https://cdn.site.com/languages/`
-- `Global Language` — **ligado** = fontes globais em `/languages/font_<lang>.ft` (mesma pasta pra todos os jogos, com todos os caracteres, bundles maiores); **desligado** = fontes por jogo em `/languages/<gameId>/font_<lang>.ft` (otimizadas)
-- `Game Id` — (só com `Global Language` desligado) segmento por jogo na URL. Vazio = usa o **Product Name** do Player Settings (minúsculo, sem espaços). Ex: `trevor`
+- `Game Id` — segmento por jogo na URL. Vazio = usa o **Product Name** do Player Settings (minúsculo, sem espaços). Ex: `trevor`
 - `Bundle Extension` — mantenha `.ft` para os bundles gerados pelo builder
 - `Remote Font Mappings` — prefixo de idioma + nome exato do TMP_FontAsset dentro do AssetBundle
 - `Main Local TMP Fonts` — fontes base do projeto que recebem a fonte remota como fallback
 - `Coverage Fallback Fonts` — fallback **permanente** de baixa prioridade para glifos soltos (₴, ₹) que a fonte principal não tem. Nunca removido ao trocar de idioma
 
-Com `Global Language` **desligado**, `Base Bundle URL = https://cdn.site.com/languages/`, `Game Id = trevor` e `languagePrefix = ja`,
-o loader baixa `https://cdn.site.com/languages/trevor/font_ja-jp.ft`. Com `Global Language` **ligado**, baixa `https://cdn.site.com/languages/font_ja-jp.ft`.
+Com `Base Bundle URL = https://cdn.site.com/languages/`, `Game Id = trevor` e `languagePrefix = ja`,
+o loader baixa `https://cdn.site.com/languages/trevor/font_ja-jp.ft`.
 
 Havendo um `RuntimeLocaleDownloader` na cena, é ele quem comanda o loader — na ordem certa: **fonte primeiro, textos depois**, com um único rebuild. Sem downloader, o loader se vira sozinho reagindo a `OnLanguageChanged`.
 

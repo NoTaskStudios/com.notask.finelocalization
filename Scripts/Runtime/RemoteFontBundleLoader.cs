@@ -36,10 +36,7 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("URL base da pasta dos bundles. Ex: https://cdn.site.com/languages/")]
         [SerializeField] private string baseBundleUrl;
 
-        [Tooltip("Ligado = fontes globais, mesma pasta para todos os jogos (bundles maiores). Desligado = fontes por jogo em /<gameId>/ (otimizadas).")]
-        [SerializeField] private bool useGlobalLanguage;
-
-        [Tooltip("Segmento do jogo na URL. Vazio = Product Name do Player Settings, minúsculo e sem espaços. Ignorado com Global Language ligado.")]
+        [Tooltip("Segmento do jogo na URL. Vazio = Product Name do Player Settings, minúsculo e sem espaços.")]
         [SerializeField] private string gameId;
 
         [Tooltip("Extensão dos bundles gerados pelo Bundle Builder.")]
@@ -403,12 +400,9 @@ namespace FineLocalization.Scripts.Runtime
 
             var url = baseBundleUrl.Trim();
 
-            if (!useGlobalLanguage)
-            {
-                var segment = string.IsNullOrWhiteSpace(gameId) ? GetDefaultGameId() : gameId.Trim();
-                if (!string.IsNullOrEmpty(segment))
-                    url = Combine(url, segment);
-            }
+            var segment = string.IsNullOrWhiteSpace(gameId) ? GetDefaultGameId() : gameId.Trim();
+            if (!string.IsNullOrEmpty(segment))
+                url = Combine(url, segment);
 
             return Combine(url, "font_" + prefix + bundleFileExtension);
         }
@@ -480,8 +474,10 @@ namespace FineLocalization.Scripts.Runtime
             var ready = false;
             yield return EnsureFontForLanguage(language, ok => ready = ok);
 
-            if (ready)
-                yield return RebuildCurrentTexts();
+            if (!ready)
+                yield break;
+
+            yield return RebuildCurrentTexts();
         }
 
         private void Complete(string language, bool success, Action<bool> onComplete, bool notify)

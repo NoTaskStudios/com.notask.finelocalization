@@ -26,11 +26,8 @@ namespace FineLocalization.EditorTools
             public Font sourceFont;
         }
 
-        [Tooltip("Pasta de saída dos bundles por jogo. Ex: AssetBundles/WebGL/Fonts")]
+        [Tooltip("Pasta de saída dos bundles. Ex: AssetBundles/WebGL/Fonts")]
         public string outputFolder = "AssetBundles/WebGL/Fonts";
-
-        [Tooltip("Pasta de saída dos bundles globais. Ex: AssetBundles/WebGL/GlobalFonts")]
-        public string globalOutputFolder = "AssetBundles/WebGL/GlobalFonts";
 
         [Tooltip("Lista dinâmica de bundles. Adicione/remova quantos idiomas precisar.")]
         public List<Entry> entries = new();
@@ -92,23 +89,11 @@ namespace FineLocalization.EditorTools
 
         private static bool EnsureDefaultOutputFolders(RemoteFontBundleBuildConfig config)
         {
-            if (config == null)
+            if (config == null || !string.IsNullOrWhiteSpace(config.outputFolder))
                 return false;
 
-            var changed = false;
-            if (string.IsNullOrWhiteSpace(config.outputFolder))
-            {
-                config.outputFolder = "AssetBundles/WebGL/Fonts";
-                changed = true;
-            }
-
-            if (string.IsNullOrWhiteSpace(config.globalOutputFolder))
-            {
-                config.globalOutputFolder = "AssetBundles/WebGL/GlobalFonts";
-                changed = true;
-            }
-
-            return changed;
+            config.outputFolder = "AssetBundles/WebGL/Fonts";
+            return true;
         }
 
         private static bool NormalizeLegacyBundleNames(RemoteFontBundleBuildConfig config)
