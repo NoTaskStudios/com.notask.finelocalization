@@ -495,6 +495,28 @@ namespace FineLocalization.Runtime
         /// <summary>True quando os dois códigos compartilham raiz (ou um contém o outro).</summary>
         public static bool IsSameOrRoot(string a, string b) => MatchScore(a, b) >= 0;
 
+        /// <summary>
+        /// True quando os códigos são iguais, ou um estende o outro com um subtag ("zh" e
+        /// "zh-cn"). Ao contrário de <see cref="IsSameOrRoot"/>, <b>não</b> casa por raiz: "zh-cn"
+        /// e "zh-tw" são diferentes.
+        ///
+        /// Use no pipeline de fontes. Casar por raiz ali junta Simplificado com Tradicional — o
+        /// characters_zh-tw.txt entraria no bundle de zh-cn, e um sync de mapeamento sobrescreve
+        /// a fonte de um idioma com a do outro.
+        /// </summary>
+        public static bool IsExactOrSubtag(string a, string b)
+        {
+            a = Normalize(a);
+            b = Normalize(b);
+
+            if (a.Length == 0 || b.Length == 0)
+                return false;
+
+            return a == b
+                   || a.StartsWith(b + "-", StringComparison.Ordinal)
+                   || b.StartsWith(a + "-", StringComparison.Ordinal);
+        }
+
         // ------------------------------------------------------------------ Fontes externas
 
         /// <summary>

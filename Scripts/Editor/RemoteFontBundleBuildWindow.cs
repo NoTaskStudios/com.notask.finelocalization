@@ -17,7 +17,7 @@ namespace FineLocalization.EditorTools
         private SerializedObject _serializedConfig;
         private Vector2 _scroll;
 
-        [MenuItem("Tools/Fine Localization/WebGL Remote Fonts/Open Bundle Builder Window", false, 60)]
+        [MenuItem("Tools/Fine Localization/Advanced/WebGL Remote Fonts/Open Bundle Builder Window", false, 60)]
         public static void Open()
         {
             var window = GetWindow<RemoteFontBundleBuildWindow>("Remote Font Bundles");

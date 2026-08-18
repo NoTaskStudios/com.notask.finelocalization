@@ -11,7 +11,7 @@ namespace FineLocalization.EditorTools
     /// <summary>
     /// Inspector do <see cref="RuntimeLocaleDownloader"/>. Além dos campos, mostra qual idioma a
     /// configuração atual vai resolver no boot — a dúvida "por que abriu em inglês?" some antes
-    /// de virar bug.
+    /// de virar bug — e qual URL de fonte cada idioma do manifesto vai pedir.
     /// </summary>
     [CustomEditor(typeof(RuntimeLocaleDownloader))]
     public class RuntimeLocaleDownloaderEditor : UnityEditor.Editor
@@ -22,10 +22,21 @@ namespace FineLocalization.EditorTools
         private SerializedProperty _useUrlQueryLanguage;
         private SerializedProperty _useSystemLanguage;
         private SerializedProperty _fallbackLanguage;
-        private SerializedProperty _fontLoader;
+        private SerializedProperty _fontMode;
+        private SerializedProperty _baseBundleUrl;
+        private SerializedProperty _gameId;
+        private SerializedProperty _mainFontAssets;
+        private SerializedProperty _coverageFallbackFontAssets;
+        private SerializedProperty _rebuildBatchSize;
+        private SerializedProperty _extraLatinPrefixes;
+        private SerializedProperty _forceRemoteFontPrefixes;
         private SerializedProperty _network;
 
-        private void OnEnable()
+        private bool _showAdvancedFonts;
+
+        private void OnEnable() => BindProperties();
+
+        private void BindProperties()
         {
             var so = serializedObject;
             _source = so.FindProperty("source");
@@ -34,13 +45,26 @@ namespace FineLocalization.EditorTools
             _useUrlQueryLanguage = so.FindProperty("useUrlQueryLanguage");
             _useSystemLanguage = so.FindProperty("useSystemLanguage");
             _fallbackLanguage = so.FindProperty("fallbackLanguage");
-            _fontLoader = so.FindProperty("fontLoader");
+            _fontMode = so.FindProperty("fontMode");
             _network = so.FindProperty("network");
+
+            var fonts = so.FindProperty("remoteFonts");
+            _baseBundleUrl = fonts?.FindPropertyRelative("baseBundleUrl");
+            _gameId = fonts?.FindPropertyRelative("gameId");
+            _mainFontAssets = fonts?.FindPropertyRelative("mainFontAssets");
+            _coverageFallbackFontAssets = fonts?.FindPropertyRelative("coverageFallbackFontAssets");
+            _rebuildBatchSize = fonts?.FindPropertyRelative("rebuildBatchSize");
+            _extraLatinPrefixes = fonts?.FindPropertyRelative("extraLatinPrefixes");
+            _forceRemoteFontPrefixes = fonts?.FindPropertyRelative("forceRemoteFontPrefixes");
         }
 
         public override void OnInspectorGUI()
         {
-            if (_source == null)
+            // A Unity destrói os SerializedProperty num domain reload mas mantém este editor vivo.
+            if (_source == null || _fontMode == null)
+                BindProperties();
+
+            if (_source == null || _fontMode == null)
             {
                 EditorGUILayout.HelpBox("Reselecione o objeto após a Unity terminar de recompilar.", MessageType.Info);
                 return;
@@ -96,7 +120,7 @@ namespace FineLocalization.EditorTools
                 case RuntimeLocaleDownloader.CsvSource.Bundled:
                     EditorGUILayout.HelpBox(
                         "Bundled: nunca baixa. Sincronize as planilhas no Editor antes do build " +
-                        "(Tools → Fine Localization → Sheets → Sync from Google).",
+                        "(Tools → Fine Localization → Setup & Update).",
                         MessageType.Info
                     );
                     break;
@@ -156,18 +180,135 @@ namespace FineLocalization.EditorTools
             EditorGUILayout.LabelField("Fontes", EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-            EditorGUILayout.PropertyField(_fontLoader, new GUIContent("Remote Font Loader"));
+            EditorGUILayout.PropertyField(_fontMode, new GUIContent("Font Mode"));
 
-            if (_fontLoader.objectReferenceValue == null)
+            var mode = (RuntimeLocaleDownloader.FontMode)_fontMode.enumValueIndex;
+            if (mode == RuntimeLocaleDownloader.FontMode.LatinOnly)
             {
                 EditorGUILayout.HelpBox(
-                    "Vazio: um RemoteFontBundleLoader é procurado na cena em runtime (inclusive inativo). " +
-                    "Sem nenhum, idiomas fora do script Latin caem no fallback em vez de virar caixas vazias.",
+                    "Latin Only: nada é baixado. Só os idiomas cobertos pelas fontes embutidas do " +
+                    "projeto são aplicados; os demais caem no Fallback Language com um aviso no log. " +
+                    "É o modo que garante nunca renderizar caractere faltando.",
                     MessageType.None
+                );
+                EditorGUILayout.EndVertical();
+                return;
+            }
+
+            EditorGUILayout.PropertyField(_baseBundleUrl, new GUIContent("Base Bundle URL"));
+            DrawGameIdWithPlaceholder();
+
+            DrawManifestStatus(mode);
+
+            EditorGUILayout.Space(2);
+            EditorGUILayout.PropertyField(_mainFontAssets, new GUIContent("Main Font Assets"), true);
+            if (_mainFontAssets.arraySize == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "Sem Main Font Assets não há onde instalar a fonte remota como fallback — o " +
+                    "download acontece e não muda nada na tela.",
+                    MessageType.Warning
                 );
             }
 
+            EditorGUILayout.PropertyField(_coverageFallbackFontAssets, new GUIContent("Coverage Fallback Fonts"), true);
+
+            EditorGUILayout.Space(2);
+            _showAdvancedFonts = EditorGUILayout.Foldout(_showAdvancedFonts, "Avançado", true);
+            if (_showAdvancedFonts)
+            {
+                EditorGUI.indentLevel++;
+                EditorGUILayout.PropertyField(_rebuildBatchSize, new GUIContent("Rebuild Batch Size"));
+                EditorGUILayout.PropertyField(_extraLatinPrefixes, new GUIContent("Extra Latin Prefixes"), true);
+                EditorGUILayout.PropertyField(_forceRemoteFontPrefixes, new GUIContent("Force Remote Font Prefixes"), true);
+                EditorGUI.indentLevel--;
+            }
+
             EditorGUILayout.EndVertical();
+        }
+
+        /// <summary>Mostra o Product Name em cinza quando o Game Id está vazio, que é o default real.</summary>
+        private void DrawGameIdWithPlaceholder()
+        {
+            var rect = EditorGUILayout.GetControlRect();
+            EditorGUI.PropertyField(rect, _gameId, new GUIContent("Game Id"));
+
+            if (!string.IsNullOrEmpty(_gameId.stringValue))
+                return;
+
+            var placeholder = RuntimeLocaleDownloader.GetDefaultGameId();
+            if (string.IsNullOrEmpty(placeholder))
+                return;
+
+            rect.xMin += EditorGUIUtility.labelWidth + 2f;
+            var style = new GUIStyle(EditorStyles.label)
+            {
+                fontStyle = FontStyle.Italic,
+                normal = { textColor = new Color(0.5f, 0.5f, 0.5f) }
+            };
+            EditorGUI.LabelField(rect, placeholder, style);
+        }
+
+        /// <summary>
+        /// O que o manifesto declara. É a resposta para "configurei tudo e a fonte não baixa":
+        /// sem manifesto não há bundle nenhum, por mais que a URL esteja certa.
+        /// </summary>
+        private void DrawManifestStatus(RuntimeLocaleDownloader.FontMode mode)
+        {
+            var manifest = FontBundleManifest.FindExisting();
+
+            if (manifest == null || !manifest.HasAnyBundle)
+            {
+                EditorGUILayout.HelpBox(
+                    manifest == null
+                        ? "Nenhum manifesto de fontes no projeto. Rode Tools → Fine Localization → " +
+                          "Setup & Update → Build Bundles. " +
+                          (mode == RuntimeLocaleDownloader.FontMode.Auto
+                              ? "Em Auto, sem manifesto o jogo roda como Latin Only."
+                              : "Em Remote, todo idioma não-latino vai cair no fallback.")
+                        : "O manifesto existe mas está vazio — nenhum bundle foi construído ainda.",
+                    mode == RuntimeLocaleDownloader.FontMode.Auto ? MessageType.Info : MessageType.Warning
+                );
+                return;
+            }
+
+            var baseUrl = _baseBundleUrl.stringValue;
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                EditorGUILayout.HelpBox(
+                    $"O manifesto tem {manifest.entries.Count} bundle(s), mas Base Bundle URL está vazia. " +
+                    (mode == RuntimeLocaleDownloader.FontMode.Auto
+                        ? "Em Auto, isso equivale a Latin Only."
+                        : "Nada será baixado."),
+                    MessageType.Warning
+                );
+                return;
+            }
+
+            var gameSegment = string.IsNullOrWhiteSpace(_gameId.stringValue)
+                ? RuntimeLocaleDownloader.GetDefaultGameId()
+                : _gameId.stringValue.Trim();
+
+            EditorGUILayout.Space(2);
+            EditorGUILayout.LabelField($"Bundles no manifesto ({manifest.entries.Count})", EditorStyles.miniBoldLabel);
+
+            var root = baseUrl.Trim().TrimEnd('/');
+            if (!string.IsNullOrEmpty(gameSegment))
+                root += "/" + gameSegment;
+
+            foreach (var entry in manifest.entries)
+            {
+                if (entry == null)
+                    continue;
+
+                EditorGUILayout.LabelField($"  {entry.language}", $"{root}/{entry.bundleFileName}", EditorStyles.miniLabel);
+            }
+
+            EditorGUILayout.LabelField(
+                "  ",
+                "Esses arquivos precisam existir no CDN nesses caminhos.",
+                EditorStyles.wordWrappedMiniLabel
+            );
         }
 
         private void DrawNetwork()
@@ -187,6 +328,7 @@ namespace FineLocalization.EditorTools
 
             EditorGUILayout.LabelField("Pronto", Localization.IsReady ? $"sim ({(Localization.LoadSucceeded ? "ok" : "com falhas")})" : "carregando...");
             EditorGUILayout.LabelField("Idioma aplicado", Localization.Language);
+            EditorGUILayout.LabelField("Fonte remota", Localization.FontReady ? "instalada" : "não usada");
 
             var available = Localization.AvailableLanguages.ToArray();
             EditorGUILayout.LabelField("Disponíveis", available.Length == 0 ? "—" : string.Join(", ", available));

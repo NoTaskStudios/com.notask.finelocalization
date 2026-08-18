@@ -37,6 +37,25 @@ namespace FineLocalization.Scripts.Runtime
             Bundled = 2
         }
 
+        /// <summary>De onde vêm as fontes dos idiomas com muitos glifos.</summary>
+        public enum FontMode
+        {
+            /// <summary>
+            /// Decide sozinho: usa fonte remota quando há <c>Base Bundle URL</c> e o manifesto tem
+            /// bundles. É o default para uma cena nova funcionar sem configurar nada.
+            /// </summary>
+            Auto = 0,
+
+            /// <summary>
+            /// Nunca baixa. Só as fontes embutidas no projeto — o único caminho garantido de abrir
+            /// o jogo sem caractere faltando. Idioma que exigir mais cai no fallback.
+            /// </summary>
+            LatinOnly = 1,
+
+            /// <summary>Sempre tenta a fonte remota do manifesto.</summary>
+            Remote = 2
+        }
+
         [Serializable]
         public class NetworkOptions
         {
@@ -71,8 +90,13 @@ namespace FineLocalization.Scripts.Runtime
         [SerializeField] private string fallbackLanguage = LocalizationManager.DefaultLanguage;
 
         [Header("Fontes")]
-        [Tooltip("Opcional. Baixa a fonte do idioma antes de atualizar os textos. Vazio = procura um na cena.")]
-        [SerializeField] private RemoteFontBundleLoader fontLoader;
+        [Tooltip("Auto: usa fonte remota quando há CDN configurado e bundles no manifesto.\n" +
+                 "Latin Only: nunca baixa nada — só as fontes embutidas no projeto. Idioma que " +
+                 "precisar de glifos que elas não têm cai no Fallback Language.\n" +
+                 "Remote: sempre tenta a fonte remota.")]
+        [SerializeField] private FontMode fontMode = FontMode.Auto;
+
+        [SerializeField] private RemoteFontOptions remoteFonts = new();
 
         [Header("Rede")]
         [SerializeField] private NetworkOptions network = new();
@@ -88,7 +112,17 @@ namespace FineLocalization.Scripts.Runtime
         private bool _busy;
         private bool _dictionaryLoaded;
         private bool _remoteFontInstalled;
-        private bool _fontLoaderMissingLogged;
+        private bool _latinOnlyLogged;
+        private RemoteFontInstaller _installer;
+
+        /// <summary>
+        /// Criado sob demanda: um componente que começa desativado só recebe Awake quando é
+        /// habilitado, e o installer pode ser consultado antes disso.
+        /// </summary>
+        private RemoteFontInstaller Installer => _installer ??= new RemoteFontInstaller(remoteFonts);
+
+        /// <summary>True quando a fonte remota do idioma atual está carregada e utilizável.</summary>
+        public bool FontReady => _installer != null && _installer.Ready;
 
         private void Awake()
         {
@@ -101,10 +135,26 @@ namespace FineLocalization.Scripts.Runtime
                 settings.ApplyLanguageAliases();
         }
 
+        private void OnEnable()
+        {
+            // Os hooks do TMP são globais (o TMP resolve fallback globalmente), então quem estiver
+            // habilitado é o dono. Na v3.1 isso vivia no OnEnable do RemoteFontBundleLoader e
+            // nunca era desinstalado.
+            Installer.InstallHooks();
+        }
+
+        private void OnDisable()
+        {
+            _installer?.UninstallHooks();
+        }
+
         private void OnDestroy()
         {
             Localization.Detach(this);
         }
+
+        /// <summary>Segmento de URL por jogo derivado do Product Name, quando o Game Id está vazio.</summary>
+        public static string GetDefaultGameId() => RemoteFontOptions.DefaultGameId();
 
         private void Start()
         {
@@ -271,16 +321,16 @@ namespace FineLocalization.Scripts.Runtime
             var target = LanguageCode.SelectBest(requestedCode, LocalizationManager.Dictionary)
                          ?? FallbackShapeFor(requestedCode);
 
-            var loader = ResolveFontLoader();
+            var installer = ResolveFontInstaller();
             var success = true;
 
-            if (loader != null)
+            if (installer != null)
             {
-                // Sempre passa pelo loader, mesmo em idioma Latin: é ele quem desinstala a fonte
+                // Sempre passa pelo installer, mesmo em idioma Latin: é ele quem desinstala a fonte
                 // remota do idioma anterior. Sem isso, trocar ja-jp → en-us deixaria o atlas
                 // japonês pendurado na árvore de fallback consumindo memória.
                 var fontOk = false;
-                yield return loader.EnsureFontForLanguage(target, ok => fontOk = ok);
+                yield return installer.EnsureFontForLanguage(target, ok => fontOk = ok);
 
                 if (!fontOk)
                 {
@@ -289,13 +339,14 @@ namespace FineLocalization.Scripts.Runtime
                     );
                     target = Fallback;
                     success = false;
-                    yield return loader.EnsureFontForLanguage(target);
+                    yield return installer.EnsureFontForLanguage(target);
                 }
             }
             else if (NeedsRemoteFont(target))
             {
                 FineLocalizationLogger.LogWarning(
-                    () => $"[FineLocalization] '{target}' precisa de fonte remota e não há RemoteFontBundleLoader na cena. Aplicando '{Fallback}'."
+                    () => $"[FineLocalization] '{target}' precisa de glifos que as fontes embutidas não cobrem e " +
+                          $"a fonte remota está desligada (Font Mode = {fontMode}). Aplicando '{Fallback}'."
                 );
                 target = Fallback;
                 success = false;
@@ -312,16 +363,15 @@ namespace FineLocalization.Scripts.Runtime
                 );
             }
 
-            // O loader também escuta OnLocalizationChanged; sem isso ele dispararia um segundo
-            // ciclo de download/rebuild para o idioma que acabamos de preparar aqui.
-            loader?.IgnoreNextLocalizationChanged();
+            // Não existe mais um segundo componente escutando OnLocalizationChanged, então o
+            // IgnoreNextLocalizationChanged da v3.1 deixou de ser necessário.
             LocalizationManager.Refresh();
 
             // Reconstrói quando há fonte remota em jogo agora, ou quando havia até agora pouco —
             // nesse caso os meshes já desenhados carregam materiais que acabaram de ser removidos.
-            var servingNow = loader != null && loader.IsServing(applied);
-            if (loader != null && (servingNow || _remoteFontInstalled))
-                yield return loader.RebuildCurrentTexts();
+            var servingNow = installer != null && installer.IsServing(applied);
+            if (installer != null && (servingNow || _remoteFontInstalled))
+                yield return installer.RebuildCurrentTexts();
 
             _remoteFontInstalled = servingNow;
 
@@ -401,61 +451,59 @@ namespace FineLocalization.Scripts.Runtime
             return Fallback;
         }
 
-        /// <summary>True quando o idioma usa um script que as fontes embutidas não cobrem.</summary>
+        /// <summary>
+        /// True quando o idioma usa um script que as fontes embutidas não cobrem. É propriedade do
+        /// idioma, não do <see cref="FontMode"/> — em Latin Only continua sendo true, e é isso que
+        /// faz o idioma cair no fallback em vez de renderizar quadradinhos.
+        /// </summary>
         private bool NeedsRemoteFont(string language)
         {
-            if (string.IsNullOrEmpty(language))
-                return false;
-
-            var loader = ResolveFontLoader();
-            return loader != null
-                ? loader.NeedsRemoteFont(language)
-                : !LanguageCode.IsLatinScript(language);
+            return !string.IsNullOrEmpty(language) && Installer.NeedsRemoteFont(language);
         }
 
         // -------------------------------------------------------------- Fontes
 
-        private RemoteFontBundleLoader ResolveFontLoader()
+        /// <summary>
+        /// Installer quando a fonte remota está ligada, null quando não. Null é uma configuração
+        /// válida: o jogo roda com as fontes embutidas e idiomas que precisam de mais caem no
+        /// fallback.
+        /// </summary>
+        private RemoteFontInstaller ResolveFontInstaller()
         {
-            if (fontLoader == null)
+            if (RemoteFontsEnabled)
+                return Installer;
+
+            if (!_latinOnlyLogged)
             {
-#if UNITY_2022_2_OR_NEWER
-                fontLoader = FindFirstObjectByType<RemoteFontBundleLoader>(FindObjectsInactive.Include);
-#else
-                fontLoader = FindObjectOfType<RemoteFontBundleLoader>(true);
-#endif
-            }
-
-            if (fontLoader == null)
-            {
-                if (!_fontLoaderMissingLogged)
-                {
-                    _fontLoaderMissingLogged = true;
-                    FineLocalizationLogger.Log(
-                        "[FineLocalization] Nenhum RemoteFontBundleLoader na cena. Só idiomas cobertos pelas fontes embutidas serão aplicados."
-                    );
-                }
-
-                return null;
-            }
-
-            // Um loader inativo nunca roda OnEnable nem consegue iniciar coroutines, então o
-            // download da fonte simplesmente não aconteceria. Ativamos antes de comandá-lo.
-            var go = fontLoader.gameObject;
-            if (!go.activeSelf)
-                go.SetActive(true);
-
-            if (!fontLoader.enabled)
-                fontLoader.enabled = true;
-
-            if (!go.activeInHierarchy)
-            {
-                FineLocalizationLogger.LogWarning(
-                    () => $"[FineLocalization] RemoteFontBundleLoader '{go.name}' está sob um pai desativado. Ative-o para permitir o download da fonte."
+                _latinOnlyLogged = true;
+                FineLocalizationLogger.Log(
+                    () => $"[FineLocalization] Fonte remota desligada (Font Mode = {fontMode}). " +
+                          "Só idiomas cobertos pelas fontes embutidas serão aplicados."
                 );
             }
 
-            return fontLoader;
+            return null;
+        }
+
+        /// <summary>
+        /// Em <see cref="FontMode.Auto"/>, ligada quando há CDN configurado e o manifesto declara
+        /// algum bundle. Sem uma das duas coisas não há nada para baixar, então não faz sentido
+        /// derrubar um idioma para o fallback por causa de uma fonte que ninguém publicou.
+        /// </summary>
+        private bool RemoteFontsEnabled
+        {
+            get
+            {
+                switch (fontMode)
+                {
+                    case FontMode.LatinOnly:
+                        return false;
+                    case FontMode.Remote:
+                        return true;
+                    default:
+                        return remoteFonts != null && remoteFonts.HasBundleSource && Installer.HasAnyBundle;
+                }
+            }
         }
 
         // --------------------------------------------------------------- CSVs

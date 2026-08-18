@@ -25,6 +25,7 @@ namespace FineLocalization.Runtime
     public static class Localization
     {
         private static Action<bool> _onReady = _ => { };
+        private static Action<string, bool> _onFontReady = (_, _) => { };
         private static RuntimeLocaleDownloader _runtime;
         private static string _pendingLanguage;
         private static Action<bool> _pendingCallback;
@@ -41,6 +42,12 @@ namespace FineLocalization.Runtime
 
         /// <summary>Idiomas presentes nas planilhas carregadas.</summary>
         public static IEnumerable<string> AvailableLanguages => LocalizationManager.Dictionary.Keys;
+
+        /// <summary>
+        /// True quando a fonte remota do idioma atual está carregada e utilizável. False também
+        /// quando o idioma nem precisa de fonte remota — use junto com <see cref="IsReady"/>.
+        /// </summary>
+        public static bool FontReady => _runtime != null && _runtime.FontReady;
 
         /// <summary>
         /// Dispara quando a localização fica utilizável. Quem se inscreve depois do evento já
@@ -64,10 +71,21 @@ namespace FineLocalization.Runtime
             remove => LocalizationManager.OnLocalizationChanged -= value;
         }
 
+        /// <summary>
+        /// Dispara ao fim de um download de fonte remota, com o idioma e o resultado. Até a v3.1
+        /// isso era <c>RemoteFontBundleLoader.OnFontReady</c>.
+        /// </summary>
+        public static event Action<string, bool> OnFontReady
+        {
+            add => _onFontReady += value;
+            remove => _onFontReady -= value;
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticState()
         {
             _onReady = _ => { };
+            _onFontReady = (_, _) => { };
             _runtime = null;
             _pendingLanguage = null;
             _pendingCallback = null;
@@ -130,6 +148,9 @@ namespace FineLocalization.Runtime
             LocalizationManager.ReloadAll();
             onComplete?.Invoke(true);
         }
+
+        /// <summary>Disparado pelo installer de fonte remota ao fim de um download.</summary>
+        internal static void RaiseFontReady(string language, bool success) => _onFontReady?.Invoke(language, success);
 
         internal static void Attach(RuntimeLocaleDownloader runtime) => _runtime = runtime;
 

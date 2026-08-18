@@ -21,7 +21,7 @@ namespace FineLocalization.Scripts.Runtime
     {
         /// <summary>
         /// Fontes locais válidas usadas como molde ao clonar um material. Definido pelo
-        /// <see cref="RemoteFontBundleLoader"/> a partir das suas Main Fonts.
+        /// <see cref="RuntimeLocaleDownloader"/> a partir das suas Main Fonts.
         /// </summary>
         internal static IList<TMP_FontAsset> MaterialTemplates { get; set; }
 

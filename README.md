@@ -19,6 +19,7 @@ Através de uma planilha `.csv` com chaves e valores por idioma, o sistema permi
 - 🪄 Fallback automático quando uma chave está ausente (retorna a própria key)
 - ⚡ Otimizado para **WebGL/2 GB de RAM**: parser sem alocações desnecessárias, scans únicos da cena, sem cópias defensivas de dicionário
 - 🎯 **API única** (`Localization`) para ler texto, trocar idioma e saber quando está pronto
+- 🪄 **Fontes remotas sem digitar mapeamento**: o Bundle Builder gera um manifesto e o runtime lê dele — nenhuma lista idioma → fonte no inspector
 - 🧭 **Códigos de idioma normalizados**: aceita o que o host manda errado (`cn`, `jp`, `iw`, `esp`, `zh-Hans-CN`) e resolve contra as colunas que a planilha realmente tem
 
 ```csharp
@@ -64,27 +65,36 @@ Tudo fica em **`Tools → Fine Localization`**:
 
 ```
 Tools/Fine Localization/
+├── Setup & Update                        ← COMECE AQUI: checklist do pipeline inteiro
 ├── Open Localization Editor              ← janela principal (estilo planilha)
-├── Open Settings Inspector               ← abre o ScriptableObject de Settings
-├── Language Picker (Preview)             ← troca idioma no Editor
-│
-├── Sheets/
-│   ├── Sync from Google (Download + Characters)
-│   ├── Regenerate Characters from Saved CSVs
-│   └── Generate Latin Base Characters
-│
-├── WebGL Remote Fonts/
-│   ├── Open Bundle Builder Window
-│   ├── Generate Font Assets From Characters
-│   └── Build Bundles Now
+├── Language Picker                       ← troca idioma no Editor
 │
 ├── Diagnostics/
-│   └── Run Language Code Self Check       ← valida a resolução de códigos de idioma
+│   ├── Run Language Code Self Check      ← valida a resolução de códigos de idioma
+│   ├── Report Keys Used vs Unused
+│   └── Report Keys Used vs Unused (com Cenas)
 │
-├── Migrate Legacy Components             ← migra componentes do pacote antigo
-├── Reset Settings to Defaults
+├── Advanced/                             ← as ações individuais, para script/CI
+│   ├── Sheets/
+│   │   ├── Sync from Google (Download + Characters)
+│   │   ├── Regenerate Characters from Saved CSVs
+│   │   └── Generate Latin Base Characters
+│   ├── WebGL Remote Fonts/
+│   │   ├── Open Bundle Builder Window
+│   │   ├── Generate Font Assets From Characters
+│   │   └── Build Bundles Now
+│   ├── Open Settings Inspector
+│   ├── Migrate Remote Font Loader        ← v3.1 → v3.2
+│   ├── Migrate Legacy Components
+│   └── Reset Settings to Defaults
+│
 └── Documentation
 ```
+
+**`Setup & Update` é a janela que você quer.** Ela mostra o pipeline em duas fases — *Textos* e
+*Fontes* — com cada passo detectando sozinho se já está pronto, e faz cada ação no lugar certo e na
+ordem certa. Os itens em `Advanced/` continuam existindo para automação e para quem já tem o
+costume, mas nenhum deles é necessário.
 
 ---
 
@@ -229,7 +239,8 @@ Trocar de idioma depois é instantâneo: os dados já estão em memória e só a
 | `Usar ?lang= da URL` | Lê `?lang=`, `?locale=`, `?culture=`, `?language=`, `?lng=` da URL de lançamento |
 | `Usar idioma do sistema` | Usa o idioma do SO/navegador quando nada mais define um |
 | `Fallback Language` | Idioma final da cadeia, e destino de segurança quando a fonte remota falha |
-| `Remote Font Loader` | (opcional) Vazio = procura um `RemoteFontBundleLoader` na cena, inclusive inativo |
+| `Font Mode` | `Auto` (usa fonte remota se houver URL + manifesto), `Latin Only` (nunca baixa) ou `Remote` (sempre tenta) |
+| `Base Bundle URL` / `Game Id` | CDN das fontes remotas e o segmento por jogo. Vazio no Game Id = Product Name |
 | `Rede` | Tentativas, timeout e espera entre tentativas |
 
 ### Cadeia de resolução do idioma
@@ -350,91 +361,98 @@ Localization.OnLanguageChanged           // Action
 
 ## Remote Fonts (WebGL) — fontes sob demanda para CJK/Árabe/etc.
 
-Idiomas com **muitos glyphs** (chinês, japonês, coreano, tailandês, árabe, hindi…) inflam o tamanho da build se as fontes forem bundled. A solução: **bundles separados por idioma**, baixados sob demanda.
+Idiomas com **muitos glyphs** (chinês, japonês, coreano, tailandês, árabe, hindi…) inflam o tamanho
+da build se as fontes forem bundled. A solução: **bundles separados por idioma**, baixados sob demanda.
 
-### Configurar bundles
+### O fluxo inteiro fica numa janela
 
-1. **Tools → Fine Localization → WebGL Remote Fonts → Open Bundle Builder Window**
-2. Na primeira vez, o asset `RemoteFontBundleBuildConfig` é criado automaticamente em `Assets/FineLocalization/Editor/`.
-   O pacote também cria a estrutura inicial de fontes dentro do FineLocalization:
+**`Tools → Fine Localization → Setup & Update`**, fase *Fontes*. Cada passo detecta sozinho se já
+está pronto:
 
-   ```
-   Assets/
-   └── FineLocalization/
-       └── RemoteFonts/
-           ├── ChineseSimplified/
-           ├── ChineseTraditional/
-           ├── Japanese/
-           ├── Korean/
-           └── Thai/
-   ```
+| Passo | O que a janela faz |
+|---|---|
+| **Entradas de bundle** | Lê as colunas de idioma dos CSVs, marca quais precisam de fonte remota (`LanguageCode.IsLatinScript`) e cria a entrada + a pasta `RemoteFonts/<idioma>` para as que faltam. O nome do bundle espelha a coluna: `font_<coluna>`. |
+| **Fontes de origem** | Um campo por idioma para arrastar o `.ttf`/`.otf`. **É a única entrada manual do pipeline.** |
+| **Assar font assets** | Gera um `TMP_FontAsset` SDF estático com só os caracteres daquela coluna, mantendo o `.ttf` fora do bundle. |
+| **Build dos bundles** | Empacota em `AssetBundles/WebGL/Fonts` com extensão `.ft` e grava o **manifesto**. |
+| **Enviar para o CDN** | Lista os arquivos e revela a pasta. O único passo que nenhuma checagem alcança. |
+| **Verificar** | Aponta as contradições silenciosas — bundle para idioma latino que nunca vai baixar, fonte assada sem glifos da coluna, bundle em disco fora do manifesto, mais de um build config no projeto. |
 
-3. Para cada idioma:
-   - Defina **Bundle name** sem extensão (ex: `font_ar`, `font_he`, `font_vi`)
-   - Arraste a **pasta** que contém os `TMP_FontAsset` desse idioma
-   - A janela valida e mostra `✔ N TMP_FontAsset(s) em '...'`
-4. Clique em **▶ Build Bundles**.
-   Os arquivos são gerados em `AssetBundles/WebGL/Fonts` com extensão `.ft` (ex: `font_ja-jp.ft`), e o log lista o tamanho de cada um.
+### O que ainda é manual
 
-> A lista é totalmente dinâmica — adicione/remova quantos idiomas quiser. **Nada é hardcoded.**
+Só o `.ttf`. Tudo o mais é derivado:
 
-Ao sincronizar as planilhas, o pacote gera arquivos de caracteres em
-`Assets/FineLocalization/Editor/GeneratedCharacters/`, como `characters_all.txt`,
-`characters_ja.txt`, `characters_ko.txt` e `characters_th.txt`.
-O sufixo segue o nome da coluna de idioma no CSV.
-Para criar o `TMP_FontAsset` remoto há duas opções:
-- **Automático (recomendado):** defina a **Source Font** (.ttf) de cada idioma na janela e clique em **⚙ Generate Font Assets** (ou menu *Tools → Fine Localization → WebGL Remote Fonts → Generate Font Assets From Characters*). Ele assa um SDF estático contendo só os caracteres do `characters_<lang>.txt`, salva na pasta do idioma e mantém o `.ttf` **fora** do bundle. Settings de atlas/point size/padding ficam na janela.
-- **Manual:** use o arquivo do idioma correspondente no Font Asset Creator.
+- **nome do bundle** ← coluna da planilha
+- **pasta** ← `RemoteFonts/<coluna>`
+- **caracteres a assar** ← `characters_<coluna>.txt`, gerado no download das planilhas
+- **idioma que o bundle atende** ← nome do bundle
+- **nome do TMP_FontAsset** ← o asset assado na pasta
 
-Qualquer um dos dois evita que uma fonte japonesa inclua glyphs de coreano, tailandês, moedas ou outros idiomas.
-O arquivo por idioma contém apenas caracteres encontrados naquela coluna; caracteres comuns de runtime
-ficam no arquivo agregado/base.
-Como esses `.txt` ficam em pasta `Editor`, eles não entram na build.
+### O manifesto
+
+`Build Bundles` grava `Assets/FineLocalization/Resources/FineLocalizationFontBundles.asset` com uma
+entrada por bundle: idioma, nome do arquivo e nome da fonte. **Commite esse asset** — é por ele que o
+runtime sabe que existem fontes remotas.
+
+Até a v3.1 isso era uma lista digitada no inspector (`Remote Font Mappings`), e a URL era remontada
+como `"font_" + prefixo + extensão`. O manifesto guarda o nome do arquivo **que foi construído**,
+então a URL e o arquivo no CDN não podem divergir.
 
 ### Usar em runtime
 
-Adicione o componente `RemoteFontBundleLoader` na cena e configure:
-- `Base Bundle URL` — URL da pasta no CDN, ex: `https://cdn.site.com/languages/`
-- `Game Id` — segmento por jogo na URL. Vazio = usa o **Product Name** do Player Settings (minúsculo, sem espaços). Ex: `trevor`
-- `Bundle Extension` — mantenha `.ft` para os bundles gerados pelo builder
-- `Remote Font Mappings` — prefixo de idioma + nome exato do TMP_FontAsset dentro do AssetBundle
-- `Main Local TMP Fonts` — fontes base do projeto que recebem a fonte remota como fallback
-- `Coverage Fallback Fonts` — fallback **permanente** de baixa prioridade para glifos soltos (₴, ₹) que a fonte principal não tem. Nunca removido ao trocar de idioma
+No `RuntimeLocaleDownloader`, seção **Fontes**:
 
-Com `Base Bundle URL = https://cdn.site.com/languages/`, `Game Id = trevor` e `languagePrefix = ja`,
-o loader baixa `https://cdn.site.com/languages/trevor/font_ja-jp.ft`.
+| Campo | O que é |
+|---|---|
+| `Font Mode` | `Auto` (usa remota se houver URL + manifesto), `Latin Only` (nunca baixa) ou `Remote` (sempre tenta) |
+| `Base Bundle URL` | URL da pasta no CDN, ex: `https://cdn.site.com/languages/` |
+| `Game Id` | Segmento por jogo na URL. Vazio = **Product Name** minúsculo e sem espaços |
+| `Main Font Assets` | Fontes base do projeto que recebem a fonte remota como fallback |
+| `Coverage Fallback Fonts` | Fallback **permanente** de baixa prioridade para glifos soltos (₴, ₹). Nunca removido ao trocar de idioma |
 
-Havendo um `RuntimeLocaleDownloader` na cena, é ele quem comanda o loader — na ordem certa: **fonte primeiro, textos depois**, com um único rebuild. Sem downloader, o loader se vira sozinho reagindo a `OnLanguageChanged`.
+O inspector mostra a **URL final de cada idioma do manifesto**, então dá para conferir o caminho sem
+entrar em Play. Com `Base Bundle URL = https://cdn.site.com/languages/`, `Game Id = trevor` e um
+bundle `font_ja-jp.ft`, o download vai em
+`https://cdn.site.com/languages/trevor/font_ja-jp.ft`.
 
-Ao trocar de idioma, a fonte remota do idioma anterior é **desinstalada** das tabelas de fallback, então o atlas antigo não fica pendurado consumindo memória.
+A ordem é garantida por construção: o downloader **parseia as planilhas, resolve o idioma contra as
+colunas, baixa a fonte desse idioma resolvido e só então troca os textos**, com um único rebuild.
+Assim o atlas nunca é de um idioma e o texto de outro.
 
-O rebuild dos textos é feito em lotes (`Rebuild Batch Size`, padrão 24 por frame) — sem `SetActive(false/true)`, que provocaria reflow total.
+Ao trocar de idioma, a fonte remota do idioma anterior é **desinstalada** das tabelas de fallback,
+então o atlas antigo não fica pendurado consumindo memória. O rebuild dos textos é feito em lotes
+(`Rebuild Batch Size`, padrão 24 por frame) — sem `SetActive(false/true)`, que provocaria reflow total.
 
-Para testar um idioma em Play: menu de contexto do componente → **Fine Localization/Recarregar fonte do idioma atual**.
+Com `Font Mode = Latin Only`, ou em `Auto` sem URL/manifesto, nada é baixado: idiomas cobertos pelas
+fontes embutidas funcionam normalmente e os demais caem no `Fallback Language`, com aviso no log e
+`callback(false)`. É o modo que garante nunca renderizar caractere faltando.
 
 ### Auto-detecção de script Latin (otimização)
 
-O loader detecta automaticamente se o idioma alvo usa **script Latin** (`en`, `pt`, `es`, `fr`, `de`, `it`, `nl`, `sv`, `pl`, `cs`, `tr`, `id`, `vi`, etc. — 50+ prefixos cobertos, incluindo o código custom `ba-id` do Bahasa Indonésia). Quando for, ele:
+O pacote detecta se o idioma alvo usa **script Latin** (`en`, `pt`, `es`, `fr`, `de`, `it`, `nl`,
+`sv`, `pl`, `cs`, `tr`, `id`, `vi`, etc. — 50+ prefixos, incluindo o código custom `ba-id` do Bahasa
+Indonésia). Quando for, ele **não faz request, não baixa bundle e não força rebuild** — só devolve
+sucesso na hora, partindo do princípio de que as fontes do seu projeto já cobrem Latin + Latin
+Extended.
 
-- ✅ **Não faz request HTTP** (sem rede)
-- ✅ **Não baixa AssetBundle** (sem alocação/cache de bundle)
-- ✅ **Não força rebuild dos textos** (sem stall de UI)
-- ✅ Apenas retorna `onComplete(true)` instantaneamente
+Script explícito vence a tabela: `sr-latn` conta como Latin mesmo com `sr` fora dela, e `ku-arab`
+não conta como Latin mesmo com `ku` dentro. Região mandada no campo de idioma também é reinterpretada
+— `us` vira `en`, então não exige uma fonte remota que ninguém publicou.
 
-Isso parte do princípio que **as fontes padrão do seu projeto já cobrem Latin + Latin Extended** (incluindo acentos `áéíóú`, `ç`, `ñ`, etc.) — o que é verdade pra 99% dos projetos Unity.
-
-### Quando ajustar a auto-detecção?
-
-No Inspector do `RemoteFontBundleLoader`, no header **Advanced**:
+Para ajustar, em **Fontes → Avançado**:
 
 | Campo | O que faz |
 |-------|-----------|
-| `Extra Latin Prefixes` | Prefixos extras a tratar como Latin (ex: `tlh`, `eo`) — não baixam bundle |
-| `Force Remote Font Prefixes` | **Override**: força download mesmo para idiomas Latin. Use se sua fonte padrão é minimalista e não tem acentos completos (ex: `tr`, `vi`) |
+| `Extra Latin Prefixes` | Prefixos extras a tratar como Latin — não baixam bundle |
+| `Force Remote Font Prefixes` | **Override**: força download mesmo para idioma Latin. Use se sua fonte padrão é minimalista e não tem acentos completos (ex: `tr`, `vi`) |
 
-> A tabela de prefixos Latin vive num único lugar (`LanguageCode`), compartilhada pelo downloader e pelo loader.
+> A tabela de prefixos Latin vive num único lugar (`LanguageCode`).
 
-> 💡 Idiomas **não-Latin** (CJK, Árabe, Hebraico, Tailandês, Devanagari, Cirílico, Grego, etc.) **sempre** caem no fluxo de download — só procuram bundle se você tiver criado config pra eles no `RemoteFontBundleBuildConfig`.
+> ⚠️ Criar um bundle para um idioma latino sem adicionar o código em `Force Remote Font Prefixes`
+> faz o bundle nunca ser baixado. O passo **Verificar** do Hub aponta exatamente isso.
+
+Os `characters_<coluna>.txt` ficam em `Assets/FineLocalization/Editor/GeneratedCharacters/`. Como
+estão numa pasta `Editor`, não entram na build.
 
 ---
 
@@ -473,7 +491,7 @@ Boas práticas já aplicadas no pacote (você não precisa fazer nada extra):
 - Sem cópias defensivas de dicionário em `LoadFromCsvMap`
 - **Trocar de idioma é O(1)**: os CSVs são parseados uma vez só; a troca apenas reaponta o dicionário. Na v2 cada troca re-parseava todas as planilhas
 - **Um único `OnLanguageChanged` por troca**: a fonte é baixada e instalada *antes* de notificar, em vez de disparar um evento por etapa
-- `RemoteFontBundleLoader` faz **uma única varredura da cena** por operação, deduplicando fontes via `HashSet`
+- A instalação de fonte faz **uma única varredura da cena** por operação, deduplicando fontes via `HashSet`
 - Rebuild em lotes, sem `SetActive(false/true)` — só `ForceMeshUpdate`
 - Fonte remota do idioma anterior é desinstalada na troca — o atlas antigo não fica retido
 - Logs gateados por `EnableLogs` via `FineLocalizationLogger` (zero-alloc quando off)
@@ -486,6 +504,77 @@ Boas práticas já aplicadas no pacote (você não precisa fazer nada extra):
 3. Use **Remote Fonts** para idiomas com muitos glyphs
 4. Mantenha as planilhas **enxutas** — uma chave por linha; evite valores vazios desnecessários
 5. Sincronize as planilhas no Editor antes de todo build de release
+
+---
+
+## Migração v3.1 → v3.2 (BREAKING)
+
+Duas mudanças estruturais. A primeira exige rodar um migrador; a segunda é só ganho.
+
+### 1. `RemoteFontBundleLoader` deixou de existir
+
+O componente foi absorvido pelo `RuntimeLocaleDownloader`. Eram dois MonoBehaviours que se
+procuravam por `FindFirstObjectByType`, negociavam ordem por um hack (`IgnoreNextLocalizationChanged`)
+e cada um instalava delegates globais no TextMeshPro que ninguém limpava.
+
+**O que fazer, na ordem:**
+
+1. Atualizar o pacote. Cenas e prefabs que tinham o loader vão mostrar **"missing script"**. É esperado.
+2. `Tools ▸ Fine Localization ▸ Advanced ▸ Migrate Remote Font Loader` → **Escanear** → **Migrar**.
+   O migrador lê a configuração antiga direto do arquivo da cena/prefab, escreve no downloader,
+   liga `Font Mode = Remote` e limpa o componente órfão.
+3. `Tools ▸ Fine Localization ▸ Setup & Update` → fase *Fontes* → **Build bundles**, para gerar o
+   manifesto (ver abaixo).
+4. Commitar `Assets/FineLocalization/Resources/FineLocalizationFontBundles.asset`.
+
+> O migrador precisa de cena/prefab em **serialização de texto** (`Force Text` ou `Mixed`, o default
+> da Unity). Em projeto com `Force Binary` ele avisa e você reconfigura `Base Bundle URL` e as listas
+> de fonte à mão.
+
+**Novo campo `Font Mode`:**
+
+| Modo | Comportamento |
+|---|---|
+| `Auto` (default) | Usa fonte remota quando há `Base Bundle URL` **e** bundles no manifesto. Sem uma das duas coisas, se comporta como `Latin Only`. |
+| `Latin Only` | Nunca baixa nada. Só as fontes embutidas — o único caminho garantido de abrir o jogo sem caractere faltando. Idioma que precisar de mais cai no `Fallback Language`, com aviso no log e `callback(false)`. |
+| `Remote` | Sempre tenta a fonte remota do manifesto. |
+
+**API que mudou de lugar:**
+
+| v3.1 | v3.2 |
+|---|---|
+| `RemoteFontBundleLoader.IsReady` | `Localization.FontReady` |
+| `RemoteFontBundleLoader.LastLanguage` | `Localization.Language` |
+| `RemoteFontBundleLoader.OnFontReady` | `Localization.OnFontReady` |
+| `RemoteFontBundleLoader.GetDefaultGameId()` | `RuntimeLocaleDownloader.GetDefaultGameId()` |
+
+Os apelidos que já estavam `[Obsolete]` na v3.1 (`OnDownloadRemoteFontComplete`,
+`IsRemoteFontReady`, `LastRemoteFontSucceeded`, `LastRemoteFontLanguage`,
+`ShouldLoadRemoteFontForLanguage`, `IsSameLanguageOrRoot`) foram removidos.
+Quem usa só `Localization` não muda nada.
+
+### 2. `Remote Font Mappings` acabou
+
+A lista que exigia digitar prefixo e nome do TMP_FontAsset por idioma **não existe mais**, e não
+precisa ser migrada: ela nunca carregava informação nova. O prefixo saía do nome do bundle e o nome
+da fonte saía do asset assado — e o runtime nem precisava dele, porque já carregava todos os assets
+do bundle e pegava a primeira fonte.
+
+Agora o **Build Bundles grava um manifesto** (`Resources/FineLocalizationFontBundles.asset`) com
+idioma, nome do arquivo e nome da fonte, tudo derivado dos artefatos que realmente saíram. O runtime
+lê dele.
+
+Ganho colateral: a URL passa a usar **o nome do arquivo construído**, não uma remontagem
+`"font_" + prefixo + extensão`. Um bundle fora da convenção antes gerava 404 que só aparecia em Play.
+
+Esse asset **precisa ser commitado** — sem ele o jogo não sabe que existem fontes remotas.
+
+### 3. Cinco arquivos do Editor que nunca compilaram
+
+`Editor/` na raiz do pacote não tinha `.asmdef`, e pacote UPM exige um para compilar. Então overlay
+de idioma na SceneView, forçar idioma ao entrar em Play, relatório de chaves usadas/não usadas,
+`Reset Settings`, `Documentation` e o migrador de componentes legados **nunca existiram** para quem
+consome via UPM. Os arquivos foram movidos para `Scripts/Editor/` e agora funcionam.
 
 ---
 

@@ -88,7 +88,7 @@ namespace FineLocalization.EditorTools
         /// como padrão para evitar que CSVs de Development fiquem locais e
         /// acabem indo numa build de release por engano.
         /// </summary>
-        [MenuItem("Tools/Fine Localization/Sheets/Sync from Google (Download + Characters)", false, 20)]
+        [MenuItem("Tools/Fine Localization/Advanced/Sheets/Sync from Google (Download + Characters)", false, 20)]
         public static void SyncCsvsAndGenerateCharactersTxt()
         {
             var settings = LocalizationSettings.Instance;
@@ -261,15 +261,37 @@ namespace FineLocalization.EditorTools
             }
         }
 
-        [MenuItem("Tools/Fine Localization/Sheets/Regenerate Characters from Saved CSVs", false, 21)]
+        [MenuItem("Tools/Fine Localization/Advanced/Sheets/Regenerate Characters from Saved CSVs", false, 21)]
         public static void GenerateCharactersTxtFromSavedCsvs()
+        {
+            EnsureOutputFolderExists();
+            GenerateCharactersFromFolder(OutputFolder);
+        }
+
+        /// <summary>
+        /// Gera os TXT de caracteres a partir dos CSVs de <paramref name="csvFolder"/>.
+        ///
+        /// Existe para o Hub poder gerar a partir do <c>SaveFolder</c> configurado, que é onde o
+        /// download oficial grava. Até a v3.1 só havia o caminho fixo
+        /// <c>Assets/FineLocalization/Resources/Localization</c>, então quem tinha SaveFolder em
+        /// outro lugar ficava com duas cópias de cada CSV — e o gerador lia a cópia errada.
+        /// </summary>
+        public static void GenerateCharactersFromFolder(string csvFolder)
         {
             try
             {
-                EnsureOutputFolderExists();
+                if (string.IsNullOrWhiteSpace(csvFolder) || !Directory.Exists(csvFolder))
+                {
+                    FineLocalizationLogger.LogWarning(
+                        $"[FineLocalization Editor] Pasta de CSVs inexistente: {csvFolder}"
+                    );
+                    return;
+                }
+
+                EnsureCharactersOutputFolderExists();
 
                 var csvFiles = Directory.GetFiles(
-                    OutputFolder,
+                    csvFolder,
                     "*.csv",
                     SearchOption.TopDirectoryOnly
                 );
@@ -277,7 +299,7 @@ namespace FineLocalization.EditorTools
                 if (csvFiles.Length == 0)
                 {
                     FineLocalizationLogger.LogWarning(
-                        $"[FineLocalization Editor] Nenhum CSV encontrado em {OutputFolder}."
+                        $"[FineLocalization Editor] Nenhum CSV encontrado em {csvFolder}."
                     );
                     return;
                 }
@@ -311,7 +333,7 @@ namespace FineLocalization.EditorTools
             }
         }
 
-        [MenuItem("Tools/Fine Localization/Sheets/Generate Latin Base Characters", false, 22)]
+        [MenuItem("Tools/Fine Localization/Advanced/Sheets/Generate Latin Base Characters", false, 22)]
         public static void GenerateLatinBaseCharactersTxtMenu()
         {
             try

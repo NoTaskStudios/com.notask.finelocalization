@@ -25,7 +25,7 @@ namespace FineLocalization.EditorTools
     /// </summary>
     public static class GenerateRemoteFontAssets
     {
-        [MenuItem("Tools/Fine Localization/WebGL Remote Fonts/Generate Font Assets From Characters", false, 62)]
+        [MenuItem("Tools/Fine Localization/Advanced/WebGL Remote Fonts/Generate Font Assets From Characters", false, 62)]
         public static void GenerateFromMenu()
         {
             GenerateAll(RemoteFontBundleBuildConfig.GetOrCreate());
@@ -41,7 +41,6 @@ namespace FineLocalization.EditorTools
 
             int generated = 0;
             int skipped = 0;
-            var synced = new List<(string language, string assetName)>();
 
             for (int i = 0; i < config.entries.Count; i++)
             {
@@ -54,16 +53,10 @@ namespace FineLocalization.EditorTools
 
                 try
                 {
-                    if (GenerateForEntry(config, entry, out var language, out var assetName))
-                    {
+                    if (GenerateForEntry(config, entry, out _, out _))
                         generated++;
-                        if (!string.IsNullOrEmpty(language) && !string.IsNullOrEmpty(assetName))
-                            synced.Add((language, assetName));
-                    }
                     else
-                    {
                         skipped++;
-                    }
                 }
                 catch (Exception ex)
                 {
@@ -75,9 +68,12 @@ namespace FineLocalization.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            SyncLoaderMappings(synced);
-
-            Debug.Log($"[Font Bake] Concluído. Gerados: {generated}, Pulados: {skipped}.");
+            // Nada de sincronizar mapeamento em loader: desde a v3.2 o runtime lê o
+            // FontBundleManifest, gerado pelo Build Bundles a partir dos artefatos reais.
+            Debug.Log(
+                $"[Font Bake] Concluído. Gerados: {generated}, Pulados: {skipped}. " +
+                (generated > 0 ? "Rode Build Bundles para atualizar o manifesto." : string.Empty)
+            );
         }
 
         public static bool GenerateForEntry(RemoteFontBundleBuildConfig config, RemoteFontBundleBuildConfig.Entry entry, out string language, out string assetName)
@@ -528,86 +524,6 @@ namespace FineLocalization.EditorTools
             return LanguageCode.FromBundleName(Path.GetFileNameWithoutExtension(bundleName ?? string.Empty));
         }
 
-        /// <summary>
-        /// Auto-fills the "Remote TMP Font Asset Name" of every RemoteFontBundleLoader in the OPEN
-        /// scenes for each generated language: updates the matching mapping's name (overwriting a
-        /// stale one) or adds a mapping if none exists. Loaders that live only in a prefab outside an
-        /// open scene are not touched — use the loader's "Add Missing Mappings From Builder Config".
-        /// </summary>
-        private static void SyncLoaderMappings(List<(string language, string assetName)> generated)
-        {
-            if (generated == null || generated.Count == 0)
-                return;
-
-            var loaders = UnityEngine.Object.FindObjectsByType<RemoteFontBundleLoader>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-            if (loaders == null || loaders.Length == 0)
-            {
-                Debug.Log("[Font Bake] Nenhum RemoteFontBundleLoader nas cenas abertas pra sincronizar. (Se o loader estiver só num prefab, use 'Add Missing Mappings From Builder Config' no inspector dele.)");
-                return;
-            }
-
-            var updatedLoaders = 0;
-            foreach (var loader in loaders)
-            {
-                if (loader == null)
-                    continue;
-
-                var so = new SerializedObject(loader);
-                var bundlesProp = so.FindProperty("bundles");
-                if (bundlesProp == null)
-                    continue;
-
-                var changed = false;
-                foreach (var (language, assetName) in generated)
-                {
-                    if (string.IsNullOrEmpty(language) || string.IsNullOrEmpty(assetName))
-                        continue;
-
-                    var matchIndex = -1;
-                    for (int i = 0; i < bundlesProp.arraySize; i++)
-                    {
-                        var prefix = bundlesProp.GetArrayElementAtIndex(i).FindPropertyRelative("languagePrefix")?.stringValue;
-                        if (LanguageCode.IsSameOrRoot(prefix, language))
-                        {
-                            matchIndex = i;
-                            break;
-                        }
-                    }
-
-                    if (matchIndex >= 0)
-                    {
-                        var nameProp = bundlesProp.GetArrayElementAtIndex(matchIndex).FindPropertyRelative("fontAssetName");
-                        if (nameProp != null && nameProp.stringValue != assetName)
-                        {
-                            nameProp.stringValue = assetName;
-                            changed = true;
-                        }
-                    }
-                    else
-                    {
-                        var index = bundlesProp.arraySize;
-                        bundlesProp.arraySize++;
-                        var element = bundlesProp.GetArrayElementAtIndex(index);
-                        element.FindPropertyRelative("languagePrefix").stringValue = language;
-                        element.FindPropertyRelative("fontAssetName").stringValue = assetName;
-                        changed = true;
-                    }
-                }
-
-                if (!changed)
-                    continue;
-
-                so.ApplyModifiedProperties();
-                EditorUtility.SetDirty(loader);
-                if (loader.gameObject.scene.IsValid())
-                    EditorSceneManager.MarkSceneDirty(loader.gameObject.scene);
-
-                updatedLoaders++;
-                Debug.Log($"[Font Bake] Loader '{loader.name}' sincronizado.");
-            }
-
-            Debug.Log($"[Font Bake] Sync de loaders: {updatedLoaders} loader(s) atualizado(s) nas cenas abertas.");
-        }
     }
 }
 

@@ -9,7 +9,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-namespace SlotEditorTools.Localization
+namespace FineLocalization.Editor
 {
     /// <summary>
     /// Varre o projeto atrás das keys de localização REALMENTE usadas e cruza com as
@@ -31,7 +31,7 @@ namespace SlotEditorTools.Localization
     /// </summary>
     public static class FineLocalizationKeyUsageReport
     {
-        private const string MenuRoot = "Tools/Fine Localization/Keys/";
+        private const string MenuRoot = "Tools/Fine Localization/Diagnostics/";
 
         [MenuItem(MenuRoot + "Report Used vs Unused (Prefabs + Code)", priority = 100)]
         private static void ReportFast() => Run(scanScenes: false);

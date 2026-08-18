@@ -15,19 +15,19 @@ namespace FineLocalization.Editor
         private Vector2 _scrollPosition;
         private ViewMode _currentView;
 
-        [MenuItem("Tools/Fine Localization/Language Picker (Preview)", false, 2)]
+        [MenuItem("Tools/Fine Localization/Language Picker", false, 2)]
         public static void ShowLanguageWindow()
         {
             GetWindow<LocalizationSettingsWindow>("Language Settings")._currentView = ViewMode.Language;
         }
 
-        [MenuItem("Tools/Fine Localization/Open Settings Inspector", false, 1)]
+        [MenuItem("Tools/Fine Localization/Advanced/Open Settings Inspector", false, 1)]
         public static void ShowCSVSettingsWindow()
         {
             EditorUtility.OpenPropertyEditor(Settings);
         }
 
-        [MenuItem("Tools/Fine Localization/Reset Settings to Defaults", false, 91)]
+        [MenuItem("Tools/Fine Localization/Advanced/Reset Settings to Defaults", false, 91)]
         public static void ResetSettings()
         {
             if (EditorUtility.DisplayDialog("Fine Localization", "Do you want to reset settings?", "Yes", "No"))

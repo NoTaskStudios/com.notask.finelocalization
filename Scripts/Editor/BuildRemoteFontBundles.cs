@@ -15,7 +15,7 @@ namespace FineLocalization.EditorTools
     /// <summary>
     /// Builds one WebGL AssetBundle per entry configured in
     /// <see cref="RemoteFontBundleBuildConfig"/>. Nothing is hardcoded — to add a new
-    /// language, open Tools/Fine Localization/WebGL Remote Fonts/Open Bundle Builder Window and add an entry.
+    /// language, open Tools/Fine Localization/Setup & Update and let it propose the entry.
     /// </summary>
     public static class BuildRemoteFontBundles
     {
@@ -25,7 +25,7 @@ namespace FineLocalization.EditorTools
         private const string LanguageCharactersTxtPrefix = "characters_";
         private const string LogPrefix = "[Fonts Bundle]";
 
-        [MenuItem("Tools/Fine Localization/WebGL Remote Fonts/Build Bundles Now", false, 61)]
+        [MenuItem("Tools/Fine Localization/Advanced/WebGL Remote Fonts/Build Bundles Now", false, 61)]
         public static void BuildWebGlFontBundles()
         {
             var config = RemoteFontBundleBuildConfig.GetOrCreate();
@@ -40,7 +40,7 @@ namespace FineLocalization.EditorTools
             {
                 Debug.LogWarning(
                     $"{logPrefix} Nenhuma entry configurada. Abra " +
-                    "Tools/Fine Localization/WebGL Remote Fonts/Open Bundle Builder Window e adicione idiomas."
+                    "Tools/Fine Localization/Setup & Update — a janela propoe as entradas a partir das colunas da planilha."
                 );
                 return;
             }
@@ -54,6 +54,10 @@ namespace FineLocalization.EditorTools
 
             var builds = new List<AssetBundleBuild>(config.entries.Count);
             var seenNames = new HashSet<string>();
+
+            // Dados do manifesto, indexados pelo nome do arquivo que vai ser gerado. Só entram no
+            // manifesto os que realmente existirem em disco depois do build.
+            var manifestData = new Dictionary<string, FontBundleManifest.Entry>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var entry in config.entries)
             {
@@ -120,6 +124,13 @@ namespace FineLocalization.EditorTools
                     assetNames = assetPaths
                 });
 
+                manifestData[bundleFileName] = new FontBundleManifest.Entry
+                {
+                    language = GetLanguageFromBundleName(bundleName),
+                    bundleFileName = bundleFileName,
+                    fontAssetName = MainFontAssetName(assetPaths)
+                };
+
                 Debug.Log($"{logPrefix} '{bundleFileName}' → {assetPaths.Length} asset(s)");
             }
 
@@ -143,18 +154,52 @@ namespace FineLocalization.EditorTools
             }
 
             var sizes = new StringBuilder();
+            var manifestEntries = new List<FontBundleManifest.Entry>(builds.Count);
+
             foreach (var build in builds)
             {
                 var file = Path.Combine(output, build.assetBundleName);
-                if (File.Exists(file))
-                    sizes.AppendLine($"  {build.assetBundleName,-20} {new FileInfo(file).Length / 1024f,8:0.0} KB");
+                if (!File.Exists(file))
+                    continue;
+
+                sizes.AppendLine($"  {build.assetBundleName,-20} {new FileInfo(file).Length / 1024f,8:0.0} KB");
+
+                if (manifestData.TryGetValue(build.assetBundleName, out var entry) &&
+                    !string.IsNullOrEmpty(entry.language))
+                    manifestEntries.Add(entry);
             }
 
             Debug.Log(
-                $"{logPrefix} OK — {builds.Count} bundle(s) em {Path.GetFullPath(output)}\n{sizes}"
+                $"{logPrefix} OK — {manifestEntries.Count} bundle(s) em {Path.GetFullPath(output)}\n{sizes}"
+            );
+
+            // O manifesto é o que o runtime lê para saber quais idiomas têm fonte remota e qual
+            // arquivo baixar. Escrito a partir dos artefatos que existem, então a URL nunca
+            // aponta para um arquivo com nome diferente do que foi construído.
+            FontBundleManifest.Write(manifestEntries, DateTime.UtcNow.ToString("u"));
+            Debug.Log(
+                $"{logPrefix} Manifesto atualizado ({manifestEntries.Count} idioma(s)): {FontBundleManifest.EditorAssetPath}. " +
+                "Commite esse asset — sem ele o jogo não sabe que existem fontes remotas."
             );
 
             AssetDatabase.Refresh();
+        }
+
+        /// <summary>
+        /// Nome do TMP_FontAsset que o runtime vai pedir por nome dentro do bundle. Os bundles
+        /// gerados aqui têm exatamente uma fonte, então na prática é sempre a primeira; o campo
+        /// só desambigua se alguém montar uma pasta com várias.
+        /// </summary>
+        private static string MainFontAssetName(string[] assetPaths)
+        {
+            for (int i = 0; assetPaths != null && i < assetPaths.Length; i++)
+            {
+                var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(assetPaths[i]);
+                if (font != null)
+                    return font.name;
+            }
+
+            return string.Empty;
         }
 
         private static string EnsureBundleFileExtension(string bundleName)
@@ -479,21 +524,8 @@ namespace FineLocalization.EditorTools
             return LanguageCode.FromBundleName(Path.GetFileNameWithoutExtension(bundleName ?? string.Empty));
         }
 
-        /// <summary>
-        /// Propositalmente mais estrita que <see cref="LanguageCode.IsSameOrRoot"/>: casar por raiz
-        /// uniria "zh-cn" e "zh-tw", e o characters_zh-tw.txt entraria no bundle de zh-cn.
-        /// </summary>
         private static bool LanguageMatchesBundle(string fileLanguage, string bundleLanguage)
-        {
-            if (string.IsNullOrEmpty(fileLanguage) || string.IsNullOrEmpty(bundleLanguage))
-                return false;
-
-            if (string.Equals(fileLanguage, bundleLanguage, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            return fileLanguage.StartsWith(bundleLanguage + "-", StringComparison.OrdinalIgnoreCase) ||
-                   bundleLanguage.StartsWith(fileLanguage + "-", StringComparison.OrdinalIgnoreCase);
-        }
+            => LanguageCode.IsExactOrSubtag(fileLanguage, bundleLanguage);
 
         private static string GetMissingCharacters(TMP_FontAsset fontAsset, string expectedCharacters, int maxItems, out int missingCount)
         {

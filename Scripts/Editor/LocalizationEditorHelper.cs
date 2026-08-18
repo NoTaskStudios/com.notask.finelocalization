@@ -3,7 +3,7 @@ using FineLocalization.Runtime;
 using UnityEditor;
 using UnityEngine;
 
-namespace OPAGames.SimpleLocalization.Editor
+namespace FineLocalization.Editor
 {
     [InitializeOnLoad]
     public static class LocalizationEditorHelper
