@@ -501,7 +501,9 @@ namespace FineLocalization.Scripts.Runtime
                     case FontMode.Remote:
                         return true;
                     default:
-                        return remoteFonts != null && remoteFonts.HasBundleSource && Installer.HasAnyBundle;
+                        // No Editor, "tem bundle construído" já basta: a pasta local serve de origem.
+                        // Num player exige CDN configurado.
+                        return remoteFonts != null && Installer.HasBundleSource && Installer.HasAnyBundle;
                 }
             }
         }

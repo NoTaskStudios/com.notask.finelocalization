@@ -136,6 +136,26 @@ namespace FineLocalization.Scripts.Runtime
         /// <summary>Idioma da última fonte processada.</summary>
         internal string LastLanguage { get; private set; }
 
+        /// <summary>
+        /// True quando há de onde ler bundle. No Editor a pasta de saída do Bundle Builder sempre
+        /// conta: se os bundles foram construídos, iterar fonte não deveria exigir publicar no CDN
+        /// primeiro. Num player só vale o CDN.
+        /// </summary>
+        internal bool HasBundleSource
+        {
+            get
+            {
+                if (_options.HasBundleSource)
+                    return true;
+
+#if UNITY_EDITOR
+                return true;
+#else
+                return false;
+#endif
+            }
+        }
+
         /// <summary>True quando o Bundle Builder já declarou algum bundle.</summary>
         internal bool HasAnyBundle
         {
@@ -465,8 +485,16 @@ namespace FineLocalization.Scripts.Runtime
             var fileName = entry.bundleFileName.Trim();
 
 #if UNITY_EDITOR
-            if (_options.useLocalBundlesInEditor)
-                return BuildLocalBundleUrl(fileName);
+            // Explicitamente local, ou implicitamente local por não haver CDN configurado. O
+            // segundo caso é o que faz a fonte funcionar no Editor logo depois do Build Bundles,
+            // sem exigir upload — que é o passo mais lento do ciclo de iteração.
+            var explicitLocal = _options.useLocalBundlesInEditor;
+            if (explicitLocal || string.IsNullOrWhiteSpace(_options.baseBundleUrl))
+            {
+                var local = BuildLocalBundleUrl(fileName, explicitLocal);
+                if (!string.IsNullOrEmpty(local) || explicitLocal)
+                    return local;
+            }
 #endif
 
             if (string.IsNullOrWhiteSpace(_options.baseBundleUrl))
@@ -492,7 +520,7 @@ namespace FineLocalization.Scripts.Runtime
         /// Build Settings. Como estes são construídos para WebGL, o teste local exige o target
         /// WebGL ativo — o inspector avisa quando não está.
         /// </summary>
-        private string BuildLocalBundleUrl(string fileName)
+        private string BuildLocalBundleUrl(string fileName, bool warnWhenMissing)
         {
             var projectRoot = System.IO.Directory.GetParent(Application.dataPath);
             if (projectRoot == null)
@@ -504,14 +532,18 @@ namespace FineLocalization.Scripts.Runtime
 
             if (!System.IO.File.Exists(full))
             {
-                FineLocalizationLogger.LogWarning(
-                    () => $"[FineLocalization] Teste local ligado, mas o bundle não existe: {full}. " +
-                          "Rode Build Bundles ou desligue Use Local Bundles In Editor."
-                );
+                if (warnWhenMissing)
+                {
+                    FineLocalizationLogger.LogWarning(
+                        () => $"[FineLocalization] Teste local ligado, mas o bundle não existe: {full}. " +
+                              "Rode Build Bundles ou desligue Use Local Bundles In Editor."
+                    );
+                }
+
                 return string.Empty;
             }
 
-            FineLocalizationLogger.Log(() => $"[FineLocalization] Teste local: lendo bundle de {full}");
+            FineLocalizationLogger.Log(() => $"[FineLocalization] Lendo bundle local: {full}");
             return "file:///" + full.Replace('\\', '/');
         }
 #endif

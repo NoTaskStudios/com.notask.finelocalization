@@ -440,6 +440,11 @@ recém-assada sem publicar nada, ligue **`Use Local Bundles In Editor`** em *Fon
 
 O inspector mostra o caminho absoluto resolvido e confere se todos os bundles do manifesto estão lá.
 
+**No Editor, sem `Base Bundle URL` preenchida, a pasta local é usada automaticamente.** Publicar no
+CDN é o passo mais lento do ciclo; exigir isso só para ver a fonte na tela no Editor não fazia
+sentido. Com URL preenchida, o CDN continua sendo a origem — o automático nunca sobrepõe uma
+configuração explícita.
+
 **O efeito é compilado fora do build.** O trecho que monta a URL `file://` está dentro de
 `#if UNITY_EDITOR`, então um player nunca vai apontar para arquivo local — não importa o valor
 salvo na cena. Não há como esquecer isso ligado e shipar.
