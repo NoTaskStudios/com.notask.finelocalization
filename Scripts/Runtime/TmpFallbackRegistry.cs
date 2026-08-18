@@ -102,12 +102,27 @@ namespace FineLocalization.Scripts.Runtime
             Prepend(GlobalFallbacks(), remote);
 
             var seen = new HashSet<TMP_FontAsset>();
+            var hasMainFonts = false;
 
             if (mainFonts != null)
             {
                 for (int i = 0; i < mainFonts.Count; i++)
+                {
+                    if (mainFonts[i] == null)
+                        continue;
+
+                    hasMainFonts = true;
                     TryPrepend(mainFonts[i], remote, seen);
+                }
             }
+
+            // Sem Main Font Assets, a única coisa que sobra é a lista global e os textos que já
+            // existem na cena. Um jogo que monta a UI depois do boot — o caso comum, com a
+            // localização gateando o passo de boot — não tem texto nenhum aqui, e o idioma
+            // aplicava sem nunca trocar o glifo. Patch no asset da fonte default cobre isso,
+            // porque a tabela de fallback é do asset e todo texto criado depois herda.
+            if (!hasMainFonts)
+                TryPrepend(TMP_Settings.defaultFontAsset, remote, seen);
 
             if (sceneTexts != null)
             {
@@ -116,6 +131,16 @@ namespace FineLocalization.Scripts.Runtime
             }
 
             TmpFontRepair.ClearFallbackMaterialCache();
+
+            var targets = seen.Count;
+            FineLocalizationLogger.Log(() =>
+                $"[FineLocalization] Fallback de '{remote.name}' instalado na lista global e em {targets} fonte(s). " +
+                (hasMainFonts
+                    ? string.Empty
+                    : "Main Font Assets está vazio — preencha com as fontes principais da UI para " +
+                      "garantir que textos instanciados depois do boot também resolvam os glifos.")
+            );
+
             return true;
         }
 

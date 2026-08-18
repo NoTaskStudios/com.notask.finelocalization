@@ -110,6 +110,8 @@ namespace FineLocalization.Scripts.Runtime
         private string _queuedLanguage;
         private Action<bool> _queuedCallback;
         private bool _busy;
+        private bool _booted;
+        private string _explicitLanguage;
         private bool _dictionaryLoaded;
         private bool _remoteFontInstalled;
         private bool _latinOnlyLogged;
@@ -171,8 +173,14 @@ namespace FineLocalization.Scripts.Runtime
         {
             _queuedLanguage = LanguageCode.Normalize(language);
             _queuedCallback = onApplied;
+            _explicitLanguage = _queuedLanguage;
 
-            if (_busy || !isActiveAndEnabled)
+            // Antes do Boot o pedido só entra na fila: é o Boot quem o consome, depois de baixar
+            // as planilhas. Aplicar agora seria trabalho jogado fora — o idioma resolveria contra
+            // um dicionário que ainda vai ser recarregado — e, pior, o Boot em seguida não veria
+            // nada na fila e sobrescreveria com a cadeia de startup. A ordem de execução de
+            // scripts não é garantida, então SetLanguage num Awake caía exatamente nisso.
+            if (_busy || !_booted || !isActiveAndEnabled)
                 return;
 
             StartCoroutine(DrainQueue());
@@ -244,12 +252,17 @@ namespace FineLocalization.Scripts.Runtime
             if (UsesRemoteCsv)
                 yield return DownloadAllSheets(ok => dataOk = ok);
 
-            // 2. Idioma. Um pedido explícito do jogo, feito antes daqui, tem prioridade.
+            // 2. Idioma. Um pedido explícito do jogo, feito antes daqui, tem prioridade — e
+            // continua tendo mesmo que já tenha sido aplicado uma vez, senão a cadeia de startup
+            // desfaria a escolha do jogo.
             if (!TakeQueued(out var language, out var callback))
             {
                 Localization.TryTakePendingLanguage(out language, out callback);
+
                 if (string.IsNullOrEmpty(language))
-                    language = ResolveStartupLanguage();
+                    language = !string.IsNullOrEmpty(_explicitLanguage)
+                        ? _explicitLanguage
+                        : ResolveStartupLanguage();
             }
 
             // 3. Fonte + dicionário + refresh, numa única passada.
@@ -261,8 +274,10 @@ namespace FineLocalization.Scripts.Runtime
             NotifyLegacyComplete(success);
             callback?.Invoke(applyOk);
 
+            _booted = true;
             _busy = false;
 
+            // Pedido que chegou durante o Boot (depois do passo 2) é atendido agora.
             if (!string.IsNullOrEmpty(_queuedLanguage))
                 yield return DrainQueue();
         }
