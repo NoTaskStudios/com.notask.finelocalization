@@ -1,40 +1,43 @@
-using System.Collections.Generic;
-using UnityEngine;
-
 namespace FineLocalization.Runtime
 {
+    /// <summary>
+    /// Traduz um código pedido (pelo jogo, pelo host, pela URL) na coluna de idioma que existe de
+    /// verdade nas planilhas carregadas. É o único funil dessa decisão: passam por aqui
+    /// <see cref="LocalizationManager.SetLanguage"/>, <c>ReloadAll</c> e <c>Initialize</c>.
+    /// </summary>
     public static class LanguageReader
     {
+        /// <summary>
+        /// Coluna de idioma que atende <paramref name="language"/>. Nunca devolve null nem vazio:
+        /// sem candidato compatível, devolve o próprio código pedido e deixa
+        /// <see cref="LocalizationManager"/> aplicar o fallback.
+        /// </summary>
         public static string GetLanguageKey(string language)
         {
             var languages = LocalizationManager.Dictionary;
-            string lang = string.IsNullOrWhiteSpace(language)
+            var requested = string.IsNullOrWhiteSpace(language)
                 ? LocalizationManager.Language
-                : language.Trim().Trim('\uFEFF').Replace('_', '-').ToLowerInvariant();
+                : LanguageCode.Normalize(language);
 
             if (languages == null || languages.Count == 0)
-                return lang;
+                return requested;
 
-            string[] division = lang.Split('-');
-            if (!languages.ContainsKey(lang) && division.Length > 0)
-                lang = CheckIfContainsLanguage(division[0], languages, lang);
-            return lang;
-        }
+            // Caminho rápido: a coluna existe exatamente como foi pedida. Idêntico à v3.0.0.
+            if (languages.ContainsKey(requested))
+                return requested;
 
-        private static string CheckIfContainsLanguage(string language,
-            Dictionary<string, Dictionary<string, string>> dictionary,
-            string fallbackLanguage)
-        {
-            foreach (var lang in dictionary.Keys)
-            {
-                string l = lang.Split('-')[0].Trim().ToLowerInvariant();
-                if (!string.Equals(language, l, System.StringComparison.OrdinalIgnoreCase)) continue;
-                return lang;
-            }
+            // Escada de candidatos: conserta região no lugar de idioma ("cn" → "zh-cn"), código
+            // depreciado ("iw" → "he") e escolhe a região certa dentro do mesmo script
+            // ("zh-hk" → "zh-tw", nunca "zh-cn"). O resultado não depende da ordem das colunas.
+            var resolved = LanguageCode.SelectBest(requested, languages);
+            if (!string.IsNullOrEmpty(resolved))
+                return resolved;
 
-            FineLocalizationLogger.LogWarning(() => $"[FineLocalization] language key not found: {fallbackLanguage}");
-            return fallbackLanguage;
+            FineLocalizationLogger.LogWarning(
+                () => $"[FineLocalization] language key not found: {requested}. " +
+                      LanguageCode.Explain(requested, languages.Keys));
+
+            return requested;
         }
     }
 }
- 

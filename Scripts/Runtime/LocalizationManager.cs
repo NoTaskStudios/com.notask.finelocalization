@@ -46,7 +46,7 @@ namespace FineLocalization.Runtime
 
         public static void AutoLanguage()
         {
-            Language = "en-us";
+            Language = DefaultLanguage;
         }
 
         /// <summary>
@@ -82,7 +82,7 @@ namespace FineLocalization.Runtime
         {
             var requestedLanguage = string.IsNullOrWhiteSpace(preferredLanguage)
                 ? _language
-                : preferredLanguage.Trim().ToLowerInvariant();
+                : LanguageCode.Normalize(preferredLanguage);
 
             Dictionary.Clear();
             Read();
@@ -114,11 +114,7 @@ namespace FineLocalization.Runtime
             if (Dictionary.Count == 0)
                 Read();
         
-            var resolvedLanguage = LanguageReader.GetLanguageKey(
-                language.Trim().ToLowerInvariant()
-            );
-        
-            Language = resolvedLanguage;
+            Language = LanguageReader.GetLanguageKey(LanguageCode.Normalize(language));
         }
 
         public static void Read()
@@ -131,6 +127,10 @@ namespace FineLocalization.Runtime
                 FineLocalizationLogger.LogError("[FineLocalization] LocalizationSettings não encontrado.");
                 return;
             }
+
+            // Antes de qualquer resolução de idioma: os aliases do operador entram na escada de
+            // candidatos e precisam estar carregados quando GetLanguageKey rodar.
+            settings.ApplyLanguageAliases();
 
             var sources = settings.GetActiveSources();
             if (sources == null || sources.Count == 0)
@@ -487,12 +487,12 @@ namespace FineLocalization.Runtime
             return string.Join(",", cols);
         }
 
-        private static string NormalizeLanguageKey(string language)
-        {
-            return string.IsNullOrWhiteSpace(language)
-                ? string.Empty
-                : language.Trim().Trim('\uFEFF').Replace('_', '-').ToLowerInvariant();
-        }
+        /// <summary>
+        /// Header de CSV → chave do dicionário. Deliberadamente só <see cref="LanguageCode.Normalize"/>,
+        /// nunca <c>Canonicalize</c>: a coluna é o dado, e reescrever o nome dela mudaria o que
+        /// <c>Localization.AvailableLanguages</c> devolve para quem já usa o pacote.
+        /// </summary>
+        private static string NormalizeLanguageKey(string language) => LanguageCode.Normalize(language);
     }
 }
  

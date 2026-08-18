@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
+using FineLocalization.Runtime;
 using Newtonsoft.Json.Linq;
 using Unity.EditorCoroutines.Editor;
 using UnityEditor;
@@ -239,7 +241,63 @@ namespace FineLocalization.Editor
             }
         }
 
+        private static readonly HashSet<string> UnknownLanguagesLogged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Código de idioma que o Google Translate entende, a partir do nome da coluna do CSV.
+        ///
+        /// Aceita as duas convenções: o nome em inglês ("Japanese") e o código ("ja-jp", "zh-CN").
+        /// Antes só aceitava o nome, mas todo call site passa o header da coluna — então uma
+        /// planilha nomeada por código caía no default "en" e a tradução automática traduzia
+        /// <b>toda</b> coluna para inglês.
+        /// </summary>
         private static string GetLangCode(string language)
+        {
+            var fromName = GetLangCodeFromEnglishName(language);
+            if (!string.IsNullOrEmpty(fromName))
+                return fromName;
+
+            var fromTag = GetLangCodeFromTag(language);
+            if (!string.IsNullOrEmpty(fromTag))
+                return fromTag;
+
+            if (!string.IsNullOrWhiteSpace(language) && UnknownLanguagesLogged.Add(language))
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[FineLocalization] Coluna '{language}' não foi reconhecida como idioma. " +
+                          "Traduzindo para inglês. Renomeie a coluna para um código (ex: ja-jp) ou " +
+                          "para o nome em inglês (ex: Japanese)."
+                );
+            }
+
+            return "en";
+        }
+
+        /// <summary>
+        /// Traduz um código BCP-47 no dialeto que a API do Google espera — ela não usa códigos
+        /// puros para chinês, hebraico, javanês, filipino e português.
+        /// </summary>
+        private static string GetLangCodeFromTag(string language)
+        {
+            var tag = LanguageTag.Parse(LanguageCode.Canonicalize(language));
+            if (!tag.HasLanguage)
+                return null;
+
+            switch (tag.Language)
+            {
+                case "zh":
+                    return tag.Region == "tw" || tag.Region == "hk" || tag.Region == "mo" ? "zh-TW" : "zh-CN";
+                case "pt":
+                    return tag.Region == "pt" ? "pt-PT" : "pt-BR";
+                case "he": return "iw";
+                case "jv": return "jw";
+                case "fil": return "tl";
+                default: return tag.Language;
+            }
+        }
+
+        /// <summary>Nome do idioma em inglês, como as planilhas antigas nomeiam as colunas.</summary>
+        private static string GetLangCodeFromEnglishName(string language)
         {
             return language switch
             {
@@ -346,7 +404,7 @@ namespace FineLocalization.Editor
                 "Yiddish" => "yi",
                 "Yoruba" => "yo",
                 "Zulu" => "zu",
-                _ => "en"
+                _ => null
             };
         }
 

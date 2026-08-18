@@ -2,6 +2,7 @@
 
 using System;
 using System.IO;
+using FineLocalization.Runtime;
 using FineLocalization.Scripts.Runtime;
 using TMPro;
 using UnityEditor;
@@ -338,20 +339,16 @@ namespace FineLocalization.EditorTools
 
         private static string NormalizeBundleLanguage(string bundleName)
         {
-            var value = Path.GetFileNameWithoutExtension(bundleName ?? string.Empty).Trim().ToLowerInvariant();
-            if (value.StartsWith("font_", StringComparison.OrdinalIgnoreCase))
-                value = value.Substring("font_".Length);
-
-            return NormalizeLanguage(value);
+            return LanguageCode.FromBundleName(Path.GetFileNameWithoutExtension(bundleName ?? string.Empty));
         }
 
-        private static string NormalizeLanguage(string value)
-        {
-            return string.IsNullOrWhiteSpace(value)
-                ? string.Empty
-                : value.Trim().Replace('_', '-').ToLowerInvariant();
-        }
+        private static string NormalizeLanguage(string value) => LanguageCode.Normalize(value);
 
+        /// <summary>
+        /// Propositalmente mais estrita que <see cref="LanguageCode.IsSameOrRoot"/>: aqui só
+        /// contém/é contido, sem casar por raiz. O sync de mapeamentos precisa tratar "zh-cn" e
+        /// "zh-tw" como bundles <b>diferentes</b> — casar por raiz faria um sumir do inspector.
+        /// </summary>
         private static bool IsSameLanguageOrRoot(string a, string b)
         {
             if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b))

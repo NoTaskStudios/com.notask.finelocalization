@@ -19,6 +19,7 @@ Através de uma planilha `.csv` com chaves e valores por idioma, o sistema permi
 - 🪄 Fallback automático quando uma chave está ausente (retorna a própria key)
 - ⚡ Otimizado para **WebGL/2 GB de RAM**: parser sem alocações desnecessárias, scans únicos da cena, sem cópias defensivas de dicionário
 - 🎯 **API única** (`Localization`) para ler texto, trocar idioma e saber quando está pronto
+- 🧭 **Códigos de idioma normalizados**: aceita o que o host manda errado (`cn`, `jp`, `iw`, `esp`, `zh-Hans-CN`) e resolve contra as colunas que a planilha realmente tem
 
 ```csharp
 using FineLocalization.Runtime;
@@ -76,6 +77,9 @@ Tools/Fine Localization/
 │   ├── Open Bundle Builder Window
 │   ├── Generate Font Assets From Characters
 │   └── Build Bundles Now
+│
+├── Diagnostics/
+│   └── Run Language Code Self Check       ← valida a resolução de códigos de idioma
 │
 ├── Migrate Legacy Components             ← migra componentes do pacote antigo
 ├── Reset Settings to Defaults
@@ -237,6 +241,63 @@ Localization.SetLanguage()  →  Startup Language  →  ?lang= da URL  →  idio
 O inspector mostra essa cadeia montada com a sua configuração atual, então dá pra ver qual idioma vai sair no boot sem entrar em Play.
 
 `Localization.SetLanguage()` pode ser chamado **a qualquer momento** — inclusive de um `Awake` que rode antes do downloader, ou antes da planilha terminar de baixar. O pedido fica pendente e é aplicado assim que os dados chegam.
+
+### Normalização de códigos de idioma
+
+Hosts e SDKs mandam código de idioma errado o tempo todo: `cn` quando queriam dizer `zh` (`cn` é
+**região**), `jp` no lugar de `ja`, `iw` no lugar de `he`, `esp` no lugar de `es`. O pacote aceita
+tudo isso sem configuração nenhuma.
+
+Para cada pedido, o `LanguageCode` monta uma **escada de candidatos** e testa cada um, em ordem,
+contra o que existe de verdade — as colunas das planilhas carregadas e os bundles de fonte
+configurados. O primeiro candidato é **sempre** o código pedido, exatamente como veio:
+
+| pedido | escada de candidatos |
+|---|---|
+| `cn` | `cn` → `zh-cn` → `zh` → `zh-sg` → `zh-my` |
+| `zh-hk` | `zh-hk` → `zh-tw` → `zh-mo` → `zh` → `zh-cn` → `zh-sg` → `zh-my` |
+| `iw` | `iw` → `he-il` → `he` |
+| `us` | `us` → `en-us` → `en` |
+| `esp` | `esp` → `es-es` → `es` |
+
+Três consequências que valem entender:
+
+- **Nada que já funcionava muda.** Uma planilha que tenha uma coluna literal `cn` continua sendo
+  atendida por ela, porque o código cru é o primeiro candidato.
+- **Chinês Tradicional nunca vira Simplificado.** `zh-hk` e `zh-mo` preferem `zh-tw`; só caem em
+  `zh-cn` se não houver nenhuma coluna Tradicional.
+- **A ordem das colunas no Google Sheet não decide mais nada.** Quando o código é genérico
+  (`zh`, `pt`, `en`) e há várias regiões, ganha a região padrão do idioma
+  (`zh` → `zh-cn`, `pt` → `pt-br`, `en` → `en-us`).
+
+A mesma escada escolhe o **bundle de fonte**, então texto e atlas nunca divergem: o idioma é
+resolvido contra as planilhas primeiro, e a fonte segue o código resolvido.
+
+#### Language Aliases
+
+Alguns códigos são genuinamente ambíguos — `uk` é ucraniano *e* Reino Unido, e o mesmo vale para
+`ca`, `ch`, `be`, `sg` e `my`. Para esses, use **Language Aliases** no `LocalizationSettings`:
+
+| from | to |
+|---|---|
+| `uk` | `en-gb` |
+| `es` | `es-mx` |
+
+Um alias vence toda regra interna, mas nunca sombreia uma coluna que exista com o nome exato do
+que foi pedido. Não é necessário para `cn`, `jp`, `kr`, `br` e afins — esses já funcionam sozinhos.
+
+#### Diagnosticar
+
+Com `EnableLogs` ligado, um idioma que não encontra coluna nenhuma loga a escada inteira e o que
+havia disponível:
+
+```
+[FineLocalization] Idioma 'cn' não existe nas planilhas. Aplicado 'en-us'.
+'cn' → [cn, zh-cn, zh, zh-sg, zh-my]; nenhum candidato compatível contra [en-us, pt-br]
+```
+
+Para conferir as regras sem entrar em Play: *Tools → Fine Localization → Diagnostics →
+Run Language Code Self Check*.
 
 ### Saber quando está pronto
 
@@ -427,6 +488,23 @@ Boas práticas já aplicadas no pacote (você não precisa fazer nada extra):
 5. Sincronize as planilhas no Editor antes de todo build de release
 
 ---
+
+## Migração v3.0 → v3.1
+
+Compatível: nenhuma assinatura pública mudou e todo código que já resolvia certo continua
+resolvendo igual. Duas mudanças de comportamento, ambas em casos que antes eram indefinidos:
+
+| Situação | v3.0 | v3.1 |
+|---|---|---|
+| Código genérico com várias regiões (`pt` com colunas `pt-pt` e `pt-br`) | a primeira coluna da planilha | a região padrão do idioma (`pt-br`) |
+| Código com script explícito (`ku-arab`, `sr-latn`) | classificado pelo prefixo do idioma | classificado pelo script |
+
+A primeira é uma correção: na v3.0 **reordenar uma coluna no Google Sheet podia mudar o idioma
+do jogador**, porque o resultado vinha da ordem de enumeração do dicionário. Para forçar outra
+região, use **Language Aliases**.
+
+`RemoteFontBundleLoader.LastLanguage` passa a reportar o código resolvido em vez do pedido cru
+(`zh-cn` em vez de `cn`).
 
 ## Migração v2 → v3
 

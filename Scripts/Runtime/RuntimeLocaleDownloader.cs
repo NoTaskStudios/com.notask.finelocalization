@@ -93,6 +93,12 @@ namespace FineLocalization.Scripts.Runtime
         private void Awake()
         {
             Localization.Attach(this);
+
+            // O jogo pode chamar Localization.SetLanguage antes de qualquer planilha ser lida;
+            // os aliases têm que estar valendo desde já.
+            var settings = LocalizationSettings.Instance;
+            if (settings != null)
+                settings.ApplyLanguageAliases();
         }
 
         private void OnDestroy()
@@ -246,15 +252,24 @@ namespace FineLocalization.Scripts.Runtime
         }
 
         /// <summary>
-        /// Aplica um idioma numa passada só: garante a fonte, carrega o dicionário e dispara
-        /// um único <c>OnLocalizationChanged</c>. Cai no fallback quando o idioma exige uma
-        /// fonte remota que não está disponível — melhor inglês legível que caixas vazias.
+        /// Aplica um idioma numa passada só, nesta ordem: parseia as planilhas, resolve qual
+        /// coluna atende o pedido, garante a fonte desse código e dispara um único
+        /// <c>OnLocalizationChanged</c>. Cai no fallback quando o idioma exige uma fonte remota
+        /// que não está disponível — melhor inglês legível que caixas vazias.
         /// </summary>
         private IEnumerator ApplyLanguageRoutine(string requested, Action<bool> onApplied)
         {
-            var target = LanguageCode.Normalize(requested);
-            if (string.IsNullOrEmpty(target))
-                target = ResolveStartupLanguage();
+            var requestedCode = LanguageCode.Normalize(requested);
+            if (string.IsNullOrEmpty(requestedCode))
+                requestedCode = ResolveStartupLanguage();
+
+            // Parseia as planilhas ANTES de tocar em fonte: o dado de texto é quem decide o código
+            // final, e a fonte tem que seguir esse código. Resolver a fonte primeiro deixava um
+            // pedido de "cn" baixar o atlas Simplificado enquanto o texto podia cair numa coluna
+            // Tradicional — tofu silencioso, com success == true.
+            EnsureDictionaryParsed(requestedCode);
+            var target = LanguageCode.SelectBest(requestedCode, LocalizationManager.Dictionary)
+                         ?? FallbackShapeFor(requestedCode);
 
             var loader = ResolveFontLoader();
             var success = true;
@@ -286,13 +301,14 @@ namespace FineLocalization.Scripts.Runtime
                 success = false;
             }
 
-            LoadDictionary(target);
+            LocalizationManager.SetLanguage(target, notify: false);
 
             var applied = LocalizationManager.Language;
-            if (!LanguageCode.IsSameOrRoot(applied, target))
+            if (!LanguageCode.IsAcceptableFor(requestedCode, applied))
             {
                 FineLocalizationLogger.LogWarning(
-                    () => $"[FineLocalization] Idioma '{target}' não existe nas planilhas. Aplicado '{applied}'."
+                    () => $"[FineLocalization] Idioma '{requestedCode}' não existe nas planilhas. Aplicado '{applied}'. " +
+                          LanguageCode.Explain(requestedCode, LocalizationManager.Dictionary.Keys)
                 );
             }
 
@@ -309,24 +325,32 @@ namespace FineLocalization.Scripts.Runtime
 
             _remoteFontInstalled = servingNow;
 
-            FineLocalizationLogger.Log(() => $"[FineLocalization] Idioma aplicado: '{applied}' (pedido: '{requested}').");
+            FineLocalizationLogger.Log(() => $"[FineLocalization] Idioma aplicado: '{applied}' (pedido: '{requestedCode}').");
             onApplied?.Invoke(success);
         }
 
         /// <summary>
-        /// Primeira aplicação parseia os CSVs; as seguintes só reapontam o idioma. Trocar de
-        /// idioma na v2 re-parseava todas as planilhas — aqui é O(1).
+        /// Parseia os CSVs uma única vez, sem escolher idioma. As trocas seguintes só reapontam o
+        /// dicionário. Trocar de idioma na v2 re-parseava todas as planilhas — aqui é O(1).
         /// </summary>
-        private void LoadDictionary(string target)
+        private void EnsureDictionaryParsed(string preferredLanguage)
         {
             if (_dictionaryLoaded && LocalizationManager.Dictionary.Count > 0)
-            {
-                LocalizationManager.SetLanguage(target, notify: false);
                 return;
-            }
 
-            LocalizationManager.LoadFromCsvMap(_csv, target, notify: false);
+            LocalizationManager.LoadFromCsvMap(_csv, preferredLanguage, notify: false);
             _dictionaryLoaded = LocalizationManager.Dictionary.Count > 0;
+        }
+
+        /// <summary>
+        /// Forma a aplicar quando nenhuma coluna atende o pedido. Canonicalizar aqui não inventa
+        /// idioma — só melhora o aviso e o casamento de fonte ("cn" → "zh-cn"). Quem decide o
+        /// idioma final continua sendo o fallback do <see cref="LocalizationManager"/>.
+        /// </summary>
+        private static string FallbackShapeFor(string target)
+        {
+            var canonical = LanguageCode.Canonicalize(target);
+            return string.IsNullOrEmpty(canonical) ? target : canonical;
         }
 
         private bool TakeQueued(out string language, out Action<bool> callback)

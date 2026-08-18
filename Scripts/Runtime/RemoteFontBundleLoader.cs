@@ -69,6 +69,12 @@ namespace FineLocalization.Scripts.Runtime
         private readonly HashSet<UnityEngine.Object> _keepAlive = new();
         private bool _ignoreNextLocalizationChanged;
 
+        // Memo de uma entrada para FindConfig: a resolução é chamada várias vezes por troca de
+        // idioma (NeedsRemoteFont, CanServeLanguage, IsServing, CurrentRemoteFont).
+        private readonly List<string> _prefixBuffer = new();
+        private string _lastConfigLanguage;
+        private RemoteFontBundleConfig _lastConfig;
+
         /// <summary>True quando uma fonte remota está carregada e instalada.</summary>
         public static bool IsReady { get; private set; }
 
@@ -86,6 +92,10 @@ namespace FineLocalization.Scripts.Runtime
 
         private void OnEnable()
         {
+            // A lista de bundles pode ter sido reescrita pelo Bundle Builder desde o último Enable.
+            _lastConfigLanguage = null;
+            _lastConfig = null;
+
             TmpFontRepair.MaterialTemplates = mainFontAssets;
             TmpFontRepair.IsRemoteFont = IsManagedFont;
             TmpFallbackRegistry.IsManagedRemote = IsManagedFont;
@@ -371,26 +381,43 @@ namespace FineLocalization.Scripts.Runtime
 
         // ------------------------------------------------------------- Resolução
 
+        /// <summary>
+        /// Bundle configurado que atende o idioma, ou null. Usa a mesma escada de candidatos que
+        /// escolhe a coluna do CSV, então um host que manda "cn" acha o bundle de "zh-cn" e um
+        /// pedido de "zh-hk" prefere o bundle Tradicional ao Simplificado.
+        ///
+        /// Devolve o <b>config</b>, nunca um código: <see cref="BuildBundleUrl"/> monta a URL a
+        /// partir de <c>languagePrefix</c> verbatim, e canonicalizar esse campo daria 404.
+        /// </summary>
         private RemoteFontBundleConfig FindConfig(string language)
         {
-            RemoteFontBundleConfig best = null;
-            var bestScore = -1;
+            var normalized = LanguageCode.Normalize(language);
+            if (normalized.Length == 0)
+                return null;
 
+            if (_lastConfigLanguage == normalized)
+                return _lastConfig;
+
+            _prefixBuffer.Clear();
             for (int i = 0; i < bundles.Count; i++)
             {
                 var config = bundles[i];
-                if (config == null || string.IsNullOrWhiteSpace(config.languagePrefix))
-                    continue;
-
-                var score = LanguageCode.MatchScore(language, config.languagePrefix);
-                if (score > bestScore)
-                {
-                    best = config;
-                    bestScore = score;
-                }
+                _prefixBuffer.Add(config == null ? string.Empty : config.languagePrefix);
             }
 
-            return bestScore >= 0 ? best : null;
+            var chosenPrefix = LanguageCode.SelectBest(normalized, _prefixBuffer);
+
+            RemoteFontBundleConfig best = null;
+            if (chosenPrefix != null)
+            {
+                var index = _prefixBuffer.IndexOf(chosenPrefix);
+                if (index >= 0)
+                    best = bundles[index];
+            }
+
+            _lastConfigLanguage = normalized;
+            _lastConfig = best;
+            return best;
         }
 
         private string BuildBundleUrl(string prefix)

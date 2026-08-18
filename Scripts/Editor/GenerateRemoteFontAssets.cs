@@ -525,11 +525,7 @@ namespace FineLocalization.EditorTools
 
         private static string GetLanguageFromBundleName(string bundleName)
         {
-            var value = Path.GetFileNameWithoutExtension(bundleName ?? string.Empty).Trim().ToLowerInvariant();
-            if (value.StartsWith("font_", StringComparison.OrdinalIgnoreCase))
-                value = value.Substring("font_".Length);
-
-            return value.Replace('_', '-');
+            return LanguageCode.FromBundleName(Path.GetFileNameWithoutExtension(bundleName ?? string.Empty));
         }
 
         /// <summary>

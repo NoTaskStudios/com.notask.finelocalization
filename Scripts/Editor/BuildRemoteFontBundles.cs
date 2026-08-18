@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using FineLocalization.Runtime;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
@@ -475,16 +476,13 @@ namespace FineLocalization.EditorTools
 
         private static string GetLanguageFromBundleName(string bundleName)
         {
-            var value = Path.GetFileNameWithoutExtension(bundleName ?? string.Empty)
-                .Trim()
-                .ToLowerInvariant();
-
-            if (value.StartsWith("font_", StringComparison.OrdinalIgnoreCase))
-                value = value.Substring("font_".Length);
-
-            return value.Replace('_', '-');
+            return LanguageCode.FromBundleName(Path.GetFileNameWithoutExtension(bundleName ?? string.Empty));
         }
 
+        /// <summary>
+        /// Propositalmente mais estrita que <see cref="LanguageCode.IsSameOrRoot"/>: casar por raiz
+        /// uniria "zh-cn" e "zh-tw", e o characters_zh-tw.txt entraria no bundle de zh-cn.
+        /// </summary>
         private static bool LanguageMatchesBundle(string fileLanguage, string bundleLanguage)
         {
             if (string.IsNullOrEmpty(fileLanguage) || string.IsNullOrEmpty(bundleLanguage))

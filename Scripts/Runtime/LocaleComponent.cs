@@ -44,11 +44,11 @@ namespace FineLocalization.Runtime
         {
             if (!shouldAlign) return;
 
-            var languageThai = "th-th";
-            
-            text.alignment = LocalizationManager.Language.Equals(languageThai) ?
-                             text.alignment = TextAlignmentOptions.Left : 
-                             text.alignment = TextAlignmentOptions.Justified;
+            // Compare por raiz: era Equals("th-th") exato e case-sensitive, então "th",
+            // "th-TH" e "TH-TH" caíam no alinhamento errado.
+            text.alignment = LanguageCode.IsSameOrRoot(LocalizationManager.Language, "th")
+                ? TextAlignmentOptions.Left
+                : TextAlignmentOptions.Justified;
         }
 
 #if UNITY_EDITOR
