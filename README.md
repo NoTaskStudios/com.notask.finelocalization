@@ -427,6 +427,31 @@ Com `Font Mode = Latin Only`, ou em `Auto` sem URL/manifesto, nada é baixado: i
 fontes embutidas funcionam normalmente e os demais caem no `Fallback Language`, com aviso no log e
 `callback(false)`. É o modo que garante nunca renderizar caractere faltando.
 
+### Testar a fonte sem subir para o CDN
+
+A pasta de saída do Bundle Builder (`AssetBundles/WebGL/Fonts` por padrão) fica **fora de
+`Assets/`**, então não é asset do projeto e não aparece no Project window. Para testar uma fonte
+recém-assada sem publicar nada, ligue **`Use Local Bundles In Editor`** em *Fontes → Teste local*:
+
+| Campo | O que faz |
+|---|---|
+| `Use Local Bundles In Editor` | Lê os bundles do disco em vez do CDN. `Base Bundle URL` é ignorada |
+| `Local Bundle Folder` | Pasta relativa à raiz do projeto. Tem que ser a mesma do `Output Folder` do Bundle Builder |
+
+O inspector mostra o caminho absoluto resolvido e confere se todos os bundles do manifesto estão lá.
+
+**O efeito é compilado fora do build.** O trecho que monta a URL `file://` está dentro de
+`#if UNITY_EDITOR`, então um player nunca vai apontar para arquivo local — não importa o valor
+salvo na cena. Não há como esquecer isso ligado e shipar.
+
+Dois pontos que economizam confusão:
+
+- **AssetBundle é específico de plataforma.** O Editor só abre bundle da plataforma ativa em Build
+  Settings, e estes são construídos para WebGL. Com outro target o carregamento falha; o inspector
+  avisa quando a plataforma ativa não é WebGL.
+- **O manifesto continua obrigatório.** É ele que diz quais idiomas têm bundle e qual arquivo pedir.
+  Rodar **Build Bundles** gera os dois de uma vez, então na prática não muda nada no seu fluxo.
+
 ### Auto-detecção de script Latin (otimização)
 
 O pacote detecta se o idioma alvo usa **script Latin** (`en`, `pt`, `es`, `fr`, `de`, `it`, `nl`,

@@ -30,6 +30,8 @@ namespace FineLocalization.EditorTools
         private SerializedProperty _rebuildBatchSize;
         private SerializedProperty _extraLatinPrefixes;
         private SerializedProperty _forceRemoteFontPrefixes;
+        private SerializedProperty _useLocalBundlesInEditor;
+        private SerializedProperty _localBundleFolder;
         private SerializedProperty _network;
 
         private bool _showAdvancedFonts;
@@ -56,6 +58,8 @@ namespace FineLocalization.EditorTools
             _rebuildBatchSize = fonts?.FindPropertyRelative("rebuildBatchSize");
             _extraLatinPrefixes = fonts?.FindPropertyRelative("extraLatinPrefixes");
             _forceRemoteFontPrefixes = fonts?.FindPropertyRelative("forceRemoteFontPrefixes");
+            _useLocalBundlesInEditor = fonts?.FindPropertyRelative("useLocalBundlesInEditor");
+            _localBundleFolder = fonts?.FindPropertyRelative("localBundleFolder");
         }
 
         public override void OnInspectorGUI()
@@ -224,7 +228,87 @@ namespace FineLocalization.EditorTools
                 EditorGUI.indentLevel--;
             }
 
+            DrawLocalBundleTest();
+
             EditorGUILayout.EndVertical();
+        }
+
+        /// <summary>
+        /// Teste local: lê os bundles da pasta de saída do Bundle Builder em vez do CDN. Aquela
+        /// pasta fica fora de Assets/, então não é asset do projeto e não aparece no Project window
+        /// — daí a necessidade de um caminho explícito.
+        /// </summary>
+        private void DrawLocalBundleTest()
+        {
+            if (_useLocalBundlesInEditor == null || _localBundleFolder == null)
+                return;
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("Teste local (só Editor)", EditorStyles.miniBoldLabel);
+            EditorGUILayout.PropertyField(_useLocalBundlesInEditor, new GUIContent("Use Local Bundles In Editor"));
+
+            if (!_useLocalBundlesInEditor.boolValue)
+            {
+                EditorGUILayout.LabelField(
+                    "Ligue para testar uma fonte recém-assada sem subir para o CDN.",
+                    EditorStyles.wordWrappedMiniLabel
+                );
+                return;
+            }
+
+            EditorGUILayout.PropertyField(_localBundleFolder, new GUIContent("Local Bundle Folder"));
+
+            var folder = string.IsNullOrWhiteSpace(_localBundleFolder.stringValue)
+                ? "AssetBundles/WebGL/Fonts"
+                : _localBundleFolder.stringValue.Trim();
+
+            var projectRoot = System.IO.Directory.GetParent(Application.dataPath);
+            var fullFolder = projectRoot == null
+                ? folder
+                : System.IO.Path.GetFullPath(System.IO.Path.Combine(projectRoot.FullName, folder));
+
+            EditorGUILayout.LabelField("Lendo de", fullFolder, EditorStyles.wordWrappedMiniLabel);
+
+            if (!System.IO.Directory.Exists(fullFolder))
+            {
+                EditorGUILayout.HelpBox(
+                    "Essa pasta não existe. Rode Setup & Update → Build bundles, ou aponte para o " +
+                    "Output Folder do Bundle Builder.",
+                    MessageType.Warning
+                );
+                return;
+            }
+
+            // AssetBundle é específico de plataforma: o Editor só abre bundle da plataforma ativa.
+            // Estes são construídos para WebGL, então com outro target o download local falha com
+            // uma mensagem que não explica nada.
+            if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
+            {
+                EditorGUILayout.HelpBox(
+                    $"A plataforma ativa é {EditorUserBuildSettings.activeBuildTarget}, mas os bundles " +
+                    "são construídos para WebGL. O Editor só abre bundle da plataforma ativa — troque " +
+                    "para WebGL em Build Settings para o teste local funcionar.",
+                    MessageType.Warning
+                );
+            }
+
+            var manifest = FontBundleManifest.FindExisting();
+            if (manifest == null || !manifest.HasAnyBundle)
+                return;
+
+            var missing = new System.Collections.Generic.List<string>();
+            foreach (var entry in manifest.entries)
+            {
+                if (entry != null && !System.IO.File.Exists(System.IO.Path.Combine(fullFolder, entry.bundleFileName)))
+                    missing.Add(entry.bundleFileName);
+            }
+
+            EditorGUILayout.HelpBox(
+                missing.Count == 0
+                    ? $"Os {manifest.entries.Count} bundle(s) do manifesto estão nessa pasta. O CDN é ignorado."
+                    : "Faltam nessa pasta: " + string.Join(", ", missing),
+                missing.Count == 0 ? MessageType.Info : MessageType.Warning
+            );
         }
 
         /// <summary>Mostra o Product Name em cinza quando o Game Id está vazio, que é o default real.</summary>

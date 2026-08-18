@@ -43,8 +43,45 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Força bundle remoto mesmo para idiomas Latin. Use quando a fonte base não tem acentuação completa. Ex: vi, tr")]
         public List<string> forceRemoteFontPrefixes = new();
 
-        /// <summary>True quando há um CDN configurado. Sem URL não há o que baixar.</summary>
-        public bool HasBundleSource => !string.IsNullOrWhiteSpace(baseBundleUrl);
+        [Header("Teste local (só Editor)")]
+        [Tooltip("Carrega os bundles da pasta de saída do Bundle Builder em vez do CDN. Serve para " +
+                 "testar uma fonte recém-assada sem subir nada.\n\n" +
+                 "O efeito é compilado fora do build: num player este campo não faz nada, seja qual " +
+                 "for o valor salvo na cena.")]
+        public bool useLocalBundlesInEditor;
+
+        [Tooltip("Pasta dos bundles, relativa à raiz do projeto (o nível acima de Assets/). " +
+                 "Tem que ser a mesma do Output Folder do Bundle Builder.")]
+        public string localBundleFolder = DefaultLocalBundleFolder;
+
+        internal const string DefaultLocalBundleFolder = "AssetBundles/WebGL/Fonts";
+
+        /// <summary>
+        /// True quando o teste local está ligado <b>e</b> estamos no Editor. Fora do Editor é
+        /// sempre false, por compilação — não há como um build sair apontando para arquivo local.
+        /// </summary>
+        public bool UsesLocalBundles
+        {
+            get
+            {
+#if UNITY_EDITOR
+                return useLocalBundlesInEditor;
+#else
+                return false;
+#endif
+            }
+        }
+
+        /// <summary>True quando há de onde baixar: um CDN configurado ou o teste local ligado.</summary>
+        public bool HasBundleSource => !string.IsNullOrWhiteSpace(baseBundleUrl) || UsesLocalBundles;
+
+        /// <summary>Pasta local efetiva, caindo no default quando o campo está vazio.</summary>
+        public string ResolveLocalBundleFolder()
+        {
+            return string.IsNullOrWhiteSpace(localBundleFolder)
+                ? DefaultLocalBundleFolder
+                : localBundleFolder.Trim();
+        }
 
         /// <summary>Segmento por jogo, caindo no Product Name quando <see cref="gameId"/> está vazio.</summary>
         public string ResolveGameId()
@@ -422,7 +459,17 @@ namespace FineLocalization.Scripts.Runtime
         /// </summary>
         private string BuildBundleUrl(FontBundleManifest.Entry entry)
         {
-            if (!_options.HasBundleSource || string.IsNullOrWhiteSpace(entry.bundleFileName))
+            if (entry == null || string.IsNullOrWhiteSpace(entry.bundleFileName))
+                return string.Empty;
+
+            var fileName = entry.bundleFileName.Trim();
+
+#if UNITY_EDITOR
+            if (_options.useLocalBundlesInEditor)
+                return BuildLocalBundleUrl(fileName);
+#endif
+
+            if (string.IsNullOrWhiteSpace(_options.baseBundleUrl))
                 return string.Empty;
 
             var url = _options.baseBundleUrl.Trim();
@@ -431,8 +478,43 @@ namespace FineLocalization.Scripts.Runtime
             if (!string.IsNullOrEmpty(segment))
                 url = Combine(url, segment);
 
-            return Combine(url, entry.bundleFileName.Trim());
+            return Combine(url, fileName);
         }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// URL <c>file://</c> para a pasta de saída do Bundle Builder, que fica <b>fora</b> de
+        /// Assets/ e portanto não é asset do projeto. Mesmo caminho de código do CDN — o
+        /// UnityWebRequest resolve file:// igual, então o download local exercita exatamente o
+        /// mesmo fluxo de reparo e instalação da fonte.
+        ///
+        /// AssetBundle é específico de plataforma: o Editor só abre bundle da plataforma ativa em
+        /// Build Settings. Como estes são construídos para WebGL, o teste local exige o target
+        /// WebGL ativo — o inspector avisa quando não está.
+        /// </summary>
+        private string BuildLocalBundleUrl(string fileName)
+        {
+            var projectRoot = System.IO.Directory.GetParent(Application.dataPath);
+            if (projectRoot == null)
+                return string.Empty;
+
+            var full = System.IO.Path.GetFullPath(
+                System.IO.Path.Combine(projectRoot.FullName, _options.ResolveLocalBundleFolder(), fileName)
+            );
+
+            if (!System.IO.File.Exists(full))
+            {
+                FineLocalizationLogger.LogWarning(
+                    () => $"[FineLocalization] Teste local ligado, mas o bundle não existe: {full}. " +
+                          "Rode Build Bundles ou desligue Use Local Bundles In Editor."
+                );
+                return string.Empty;
+            }
+
+            FineLocalizationLogger.Log(() => $"[FineLocalization] Teste local: lendo bundle de {full}");
+            return "file:///" + full.Replace('\\', '/');
+        }
+#endif
 
         private static string Combine(string baseUrl, string segment)
         {
