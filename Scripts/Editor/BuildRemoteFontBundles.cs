@@ -15,7 +15,7 @@ namespace FineLocalization.EditorTools
     /// <summary>
     /// Builds one WebGL AssetBundle per entry configured in
     /// <see cref="RemoteFontBundleBuildConfig"/>. Nothing is hardcoded — to add a new
-    /// language, open Tools/Fine Localization/Setup & Update and let it propose the entry.
+    /// language, open Tools/Fine Localization/Setup and Update and let it propose the entry.
     /// </summary>
     public static class BuildRemoteFontBundles
     {
@@ -40,7 +40,7 @@ namespace FineLocalization.EditorTools
             {
                 Debug.LogWarning(
                     $"{logPrefix} Nenhuma entry configurada. Abra " +
-                    "Tools/Fine Localization/Setup & Update — a janela propoe as entradas a partir das colunas da planilha."
+                    "Tools/Fine Localization/Setup and Update — a janela propoe as entradas a partir das colunas da planilha."
                 );
                 return;
             }

@@ -471,7 +471,7 @@ namespace FineLocalization.EditorTools
             AssetDatabase.Refresh();
 
             _report.Add($"Migrados {migrated} de {_candidates.Count} arquivo(s).");
-            _report.Add("Próximo passo: Tools → Fine Localization → Setup & Update → Build Bundles, " +
+            _report.Add("Próximo passo: Tools → Fine Localization → Setup and Update → Build Bundles, " +
                         "para gerar o manifesto que substitui os Remote Font Mappings.");
 
             Scan();

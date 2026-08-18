@@ -142,7 +142,7 @@ namespace FineLocalization.EditorTools
                 case RuntimeLocaleDownloader.CsvSource.Bundled:
                     EditorGUILayout.HelpBox(
                         "Bundled: nunca baixa. Sincronize as planilhas no Editor antes do build " +
-                        "(Tools → Fine Localization → Setup & Update).",
+                        "(Tools → Fine Localization → Setup and Update).",
                         MessageType.Info
                     );
                     break;
@@ -290,7 +290,7 @@ namespace FineLocalization.EditorTools
             if (!System.IO.Directory.Exists(fullFolder))
             {
                 EditorGUILayout.HelpBox(
-                    "Essa pasta não existe. Rode Setup & Update → Build bundles, ou aponte para o " +
+                    "Essa pasta não existe. Rode Setup and Update → Build bundles, ou aponte para o " +
                     "Output Folder do Bundle Builder.",
                     MessageType.Warning
                 );
@@ -364,7 +364,7 @@ namespace FineLocalization.EditorTools
                 EditorGUILayout.HelpBox(
                     manifest == null
                         ? "Nenhum manifesto de fontes no projeto. Rode Tools → Fine Localization → " +
-                          "Setup & Update → Build Bundles. " +
+                          "Setup and Update → Build Bundles. " +
                           (mode == RuntimeLocaleDownloader.FontMode.Auto
                               ? "Em Auto, sem manifesto o jogo roda como Latin Only."
                               : "Em Remote, todo idioma não-latino vai cair no fallback.")

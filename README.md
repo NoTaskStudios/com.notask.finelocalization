@@ -65,7 +65,7 @@ Tudo fica em **`Tools → Fine Localization`**:
 
 ```
 Tools/Fine Localization/
-├── Setup & Update                        ← COMECE AQUI: checklist do pipeline inteiro
+├── Setup and Update                        ← COMECE AQUI: checklist do pipeline inteiro
 ├── Open Localization Editor              ← janela principal (estilo planilha)
 ├── Language Picker                       ← troca idioma no Editor
 │
@@ -91,7 +91,7 @@ Tools/Fine Localization/
 └── Documentation
 ```
 
-**`Setup & Update` é a janela que você quer.** Ela mostra o pipeline em duas fases — *Textos* e
+**`Setup and Update` é a janela que você quer.** Ela mostra o pipeline em duas fases — *Textos* e
 *Fontes* — com cada passo detectando sozinho se já está pronto, e faz cada ação no lugar certo e na
 ordem certa. Os itens em `Advanced/` continuam existindo para automação e para quem já tem o
 costume, mas nenhum deles é necessário.
@@ -386,7 +386,7 @@ da build se as fontes forem bundled. A solução: **bundles separados por idioma
 
 ### O fluxo inteiro fica numa janela
 
-**`Tools → Fine Localization → Setup & Update`**, fase *Fontes*. Cada passo detecta sozinho se já
+**`Tools → Fine Localization → Setup and Update`**, fase *Fontes*. Cada passo detecta sozinho se já
 está pronto:
 
 | Passo | O que a janela faz |
@@ -573,7 +573,7 @@ e cada um instalava delegates globais no TextMeshPro que ninguém limpava.
 2. `Tools ▸ Fine Localization ▸ Advanced ▸ Migrate Remote Font Loader` → **Escanear** → **Migrar**.
    O migrador lê a configuração antiga direto do arquivo da cena/prefab, escreve no downloader,
    liga `Font Mode = Remote` e limpa o componente órfão.
-3. `Tools ▸ Fine Localization ▸ Setup & Update` → fase *Fontes* → **Build bundles**, para gerar o
+3. `Tools ▸ Fine Localization ▸ Setup and Update` → fase *Fontes* → **Build bundles**, para gerar o
    manifesto (ver abaixo).
 4. Commitar `Assets/FineLocalization/Resources/FineLocalizationFontBundles.asset`.
 

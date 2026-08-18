@@ -21,54 +21,100 @@ namespace FineLocalization.EditorTools
     /// resolver abas depois de baixar apagava todos os <c>sheet.TextAsset</c> e o build WebGL
     /// morria; gerar bundle antes de assar a fonte pulava o idioma em silêncio.
     ///
-    /// Cada passo detecta sozinho se já está pronto, então a janela serve tanto para o primeiro
-    /// setup quanto para "adicionei uma coluna nova, o que falta fazer?".
+    /// <b>Todo estado vem de um snapshot, nunca do OnGUI.</b> Responder "esse passo já está
+    /// pronto?" custa varrer o AssetDatabase, ler todo prefab e toda cena do projeto e bater em
+    /// disco. Fazer isso por frame travava a janela.  O snapshot é recalculado ao abrir, ao ganhar
+    /// foco, depois de cada ação e no botão Reatualizar.
     /// </summary>
     public class FineLocalizationHub : EditorWindow
     {
         private const string UploadDoneKeyPrefix = "FineLocalization_Hub_UploadDone_";
+        private const string DefaultOutputFolder = "AssetBundles/WebGL/Fonts";
 
         private static readonly Color DoneColor = new(0.40f, 1.00f, 0.50f);
         private static readonly Color WarnColor = new(1.00f, 0.82f, 0.35f);
 
+        /// <summary>
+        /// Tudo que os passos precisam saber, calculado de uma vez só. Nada aqui pode ser
+        /// consultado direto do desenho.
+        /// </summary>
+        private class Snapshot
+        {
+            public bool settingsOk;
+            public bool tableIdsOk;
+            public bool saveFolderOk;
+            public string saveFolder;
+            public bool sheetsResolved;
+            public bool sheetsDownloaded;
+            public bool charactersGenerated;
+            public bool hasSheets;
+
+            public readonly List<string> languages = new();
+            public readonly List<string> needBundle = new();
+            public readonly List<string> latinWithoutEntry = new();
+            public readonly List<string> missingEntries = new();
+
+            public int entriesTotal;
+            public int sourceFontsMissing;
+            public int bakedCount;
+            public int builtCount;
+
+            public bool manifestOk;
+            public int manifestCount;
+            public string manifestGeneratedAt;
+            public readonly List<string> manifestFiles = new();
+
+            public bool legacyLoaderPresent;
+            public string outputFolder = DefaultOutputFolder;
+            public string[] configPaths = new string[0];
+        }
+
         private LocalizationSettings _settings;
         private RemoteFontBundleBuildConfig _buildConfig;
         private SerializedObject _buildConfigSo;
-
-        private readonly List<string> _languages = new();
-        private bool _languagesScanned;
+        private Snapshot _state;
 
         private bool _showFonts;
+        private bool _showBakeSettings;
         private Vector2 _scroll;
         private string _busyLabel;
 
-        [MenuItem("Tools/Fine Localization/Setup & Update", false, 0)]
+        [MenuItem("Tools/Fine Localization/Setup and Update", false, 0)]
         public static void Open()
         {
             GetWindow<FineLocalizationHub>("Fine Localization").minSize = new Vector2(620, 520);
         }
 
-        private void OnEnable() => Rebind();
+        private void OnEnable() => Invalidate();
 
-        /// <summary>
-        /// A Unity destrói os SerializedObject num domain reload mas mantém as referências de
-        /// objeto, então um guard <c>!= null</c> passa e o Update() estoura. Revalidado no topo do
-        /// OnGUI, nunca só no OnEnable.
-        /// </summary>
-        private void Rebind()
+        /// <summary>Ganhar foco costuma significar "mexi em asset na Unity": hora de reler.</summary>
+        private void OnFocus() => Invalidate();
+
+        private void Invalidate()
         {
+            _state = null;
+            _buildConfigSo = null;
+        }
+
+        private void EnsureState()
+        {
+            // A Unity destrói o SerializedObject num domain reload mas mantém a referência do
+            // objeto, então checar só `!= null` passa e o Update() estoura.
+            if (_state != null && _buildConfigSo != null && _buildConfigSo.targetObject != null)
+                return;
+
             _settings = FindSettingsWithoutCreating();
             _buildConfig = RemoteFontBundleBuildConfig.GetOrCreate();
             _buildConfigSo = _buildConfig != null ? new SerializedObject(_buildConfig) : null;
+            _state = BuildSnapshot();
         }
 
         private void OnGUI()
         {
-            if (_settings == null || _buildConfig == null || _buildConfigSo == null ||
-                _buildConfigSo.targetObject == null)
-                Rebind();
-
+            EnsureState();
             _buildConfigSo?.Update();
+
+            DrawToolbar();
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
 
@@ -81,18 +127,192 @@ namespace FineLocalization.EditorTools
 
             if (_buildConfigSo != null && _buildConfigSo.targetObject != null &&
                 _buildConfigSo.ApplyModifiedProperties())
+            {
                 EditorUtility.SetDirty(_buildConfig);
+                Invalidate();
+            }
         }
+
+        private void DrawToolbar()
+        {
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+
+            if (GUILayout.Button("Reatualizar", EditorStyles.toolbarButton, GUILayout.Width(90)))
+                Invalidate();
+
+            GUILayout.FlexibleSpace();
+
+            if (GUILayout.Button("Bundle Builder (avançado)", EditorStyles.toolbarButton, GUILayout.Width(180)))
+                RemoteFontBundleBuildWindow.Open();
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        // ------------------------------------------------------------------ Snapshot
+
+        private Snapshot BuildSnapshot()
+        {
+            var state = new Snapshot();
+
+            state.settingsOk = _settings != null;
+            state.saveFolder = ResolveSaveFolder();
+            state.saveFolderOk = !string.IsNullOrEmpty(state.saveFolder);
+
+            var sources = _settings != null ? _settings.GetActiveSources() : null;
+            state.tableIdsOk = sources != null && sources.Count > 0;
+            state.sheetsResolved = state.tableIdsOk;
+
+            if (sources != null)
+            {
+                foreach (var source in sources)
+                {
+                    if (source == null || string.IsNullOrWhiteSpace(source.TableId))
+                        state.tableIdsOk = false;
+
+                    if (source?.Sheets == null || source.Sheets.Count == 0)
+                    {
+                        state.sheetsResolved = false;
+                        continue;
+                    }
+
+                    foreach (var sheet in source.Sheets)
+                    {
+                        if (sheet == null || sheet.Id <= 0 || string.IsNullOrWhiteSpace(sheet.Name))
+                        {
+                            state.sheetsResolved = false;
+                            continue;
+                        }
+
+                        state.hasSheets = true;
+                    }
+                }
+            }
+
+            if (state.hasSheets)
+            {
+                state.sheetsDownloaded = true;
+                foreach (var sheet in AllSheets())
+                {
+                    if (sheet.TextAsset == null)
+                        state.sheetsDownloaded = false;
+                }
+            }
+
+            state.charactersGenerated = File.Exists(CharactersAllPath);
+
+            ScanLanguages(state);
+
+            if (_buildConfig != null)
+            {
+                state.outputFolder = string.IsNullOrWhiteSpace(_buildConfig.outputFolder)
+                    ? DefaultOutputFolder
+                    : _buildConfig.outputFolder;
+
+                foreach (var language in state.needBundle)
+                {
+                    if (_buildConfig.FindEntryForLanguage(language) == null)
+                        state.missingEntries.Add(language);
+                }
+
+                foreach (var language in state.languages)
+                {
+                    if (LanguageCode.IsLatinScript(language) &&
+                        _buildConfig.FindEntryForLanguage(language) == null)
+                        state.latinWithoutEntry.Add(language);
+                }
+
+                if (_buildConfig.entries != null)
+                {
+                    foreach (var entry in _buildConfig.entries)
+                    {
+                        if (entry == null || string.IsNullOrWhiteSpace(entry.bundleName))
+                            continue;
+
+                        state.entriesTotal++;
+
+                        if (entry.sourceFont == null)
+                            state.sourceFontsMissing++;
+
+                        if (HasBakedFont(entry, out _))
+                            state.bakedCount++;
+
+                        if (File.Exists(Path.Combine(state.outputFolder, entry.bundleName.Trim() + ".ft")))
+                            state.builtCount++;
+                    }
+                }
+
+                state.configPaths = RemoteFontBundleBuildConfig.FindAllConfigPaths();
+            }
+
+            var manifest = FontBundleManifest.FindExisting();
+            state.manifestOk = manifest != null && manifest.HasAnyBundle;
+            if (state.manifestOk)
+            {
+                state.manifestCount = manifest.entries.Count;
+                state.manifestGeneratedAt = manifest.generatedAt;
+                foreach (var entry in manifest.entries)
+                {
+                    if (entry != null)
+                        state.manifestFiles.Add($"{entry.language}  →  {entry.bundleFileName}");
+                }
+            }
+
+            // Varredura caríssima: todo prefab e toda cena do projeto lidos como texto. Uma vez
+            // por snapshot — era isso que travava a janela quando rodava por frame.
+            state.legacyLoaderPresent = RemoteFontLoaderMigrator.HasLegacyLoaderInProject();
+
+            return state;
+        }
+
+        private void ScanLanguages(Snapshot state)
+        {
+            var folder = state.saveFolder;
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+                return;
+
+            var skip = _settings != null ? _settings.skip : 0;
+
+            foreach (var path in Directory.GetFiles(folder, "*.csv", SearchOption.TopDirectoryOnly))
+            {
+                string content;
+                try
+                {
+                    content = File.ReadAllText(path, Encoding.UTF8);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                var lines = LocalizationManager.GetLines(content);
+                if (lines.Count == 0)
+                    continue;
+
+                var header = LocalizationManager.GetColumns(lines[0]);
+                for (int i = skip + 1; i < header.Count; i++)
+                {
+                    var language = LanguageCode.Normalize(header[i]);
+                    if (language.Length == 0 || state.languages.Contains(language))
+                        continue;
+
+                    state.languages.Add(language);
+                    if (!LanguageCode.IsLatinScript(language))
+                        state.needBundle.Add(language);
+                }
+            }
+        }
+
+        // --------------------------------------------------------------- Cabeçalho
 
         private void DrawHeader()
         {
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("Fine Localization — Setup & Update", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Fine Localization — setup e atualização", EditorStyles.boldLabel);
 
             if (!string.IsNullOrEmpty(_busyLabel))
                 EditorGUILayout.HelpBox(_busyLabel, MessageType.Info);
 
-            if (_settings == null)
+            if (!_state.settingsOk)
             {
                 EditorGUILayout.HelpBox(
                     "Nenhum LocalizationSettings no projeto ainda. O primeiro passo cria.",
@@ -110,10 +330,9 @@ namespace FineLocalization.EditorTools
             );
         }
 
-        /// <summary>Cena aberta com o loader da v3.1 ainda pendurado é o erro mais provável pós-update.</summary>
         private void DrawMigrationBanner()
         {
-            if (!RemoteFontLoaderMigrator.HasLegacyLoaderInProject())
+            if (!_state.legacyLoaderPresent)
                 return;
 
             EditorGUILayout.Space(2);
@@ -141,20 +360,18 @@ namespace FineLocalization.EditorTools
 
         private void DrawSettingsStep()
         {
-            var done = _settings != null;
-
-            BeginStep("Settings", done,
-                done
+            BeginStep("Settings", _state.settingsOk,
+                _state.settingsOk
                     ? "O asset de configuração existe e está apontado pelo CurrentSettingsPointer."
                     : "Cria Assets/FineLocalization/Resources/LocalizationSettings.asset.");
 
-            if (!done)
+            if (!_state.settingsOk)
             {
                 if (GUILayout.Button("Criar settings", GUILayout.Height(24)))
                 {
                     // Só tocar em Instance já cria o asset e o pointer.
                     _settings = LocalizationSettings.Instance;
-                    Rebind();
+                    Invalidate();
                 }
             }
             else if (GUILayout.Button("Selecionar no Project", GUILayout.Height(20)))
@@ -168,43 +385,24 @@ namespace FineLocalization.EditorTools
 
         private void DrawSourcesStep()
         {
-            var sources = _settings != null ? _settings.GetActiveSources() : null;
-            var hasSources = sources != null && sources.Count > 0;
-            var allHaveTableId = hasSources;
-
-            if (hasSources)
-            {
-                foreach (var source in sources)
-                {
-                    if (source == null || string.IsNullOrWhiteSpace(source.TableId))
-                        allHaveTableId = false;
-                }
-            }
-
-            var saveFolder = SaveFolderPath();
-            var folderOk = !string.IsNullOrEmpty(saveFolder);
-            var done = allHaveTableId && folderOk;
-
-            BeginStep("Planilhas e pasta de destino", done,
+            BeginStep("Planilhas e pasta de destino", _state.tableIdsOk && _state.saveFolderOk,
                 "Table Id de cada source e o Save Folder, que precisa ficar dentro de uma pasta Resources.");
 
-            using (new EditorGUI.DisabledScope(_settings == null))
+            using (new EditorGUI.DisabledScope(!_state.settingsOk))
             {
-                if (!allHaveTableId)
+                if (!_state.tableIdsOk)
                     EditorGUILayout.HelpBox("Falta Table Id em pelo menos uma source ativa.", MessageType.Warning);
 
-                if (!folderOk)
+                if (!_state.saveFolderOk)
                 {
                     EditorGUILayout.HelpBox(
-                        _settings != null && _settings.SaveFolder == null
-                            ? "Save Folder não está definido."
-                            : "Save Folder precisa ser uma pasta do projeto dentro de Resources, fora de Packages/.",
+                        "Save Folder precisa ser uma pasta do projeto dentro de Resources, fora de Packages/.",
                         MessageType.Warning
                     );
                 }
                 else
                 {
-                    EditorGUILayout.LabelField("Save Folder", saveFolder, EditorStyles.miniLabel);
+                    EditorGUILayout.LabelField("Save Folder", _state.saveFolder, EditorStyles.miniLabel);
                 }
 
                 if (GUILayout.Button("Abrir settings para editar", GUILayout.Height(20)) && _settings != null)
@@ -216,31 +414,7 @@ namespace FineLocalization.EditorTools
 
         private void DrawResolveStep()
         {
-            var sources = _settings != null ? _settings.GetActiveSources() : null;
-            var done = sources != null && sources.Count > 0;
-
-            if (done)
-            {
-                foreach (var source in sources)
-                {
-                    if (source?.Sheets == null || source.Sheets.Count == 0)
-                    {
-                        done = false;
-                        break;
-                    }
-
-                    foreach (var sheet in source.Sheets)
-                    {
-                        if (sheet == null || sheet.Id <= 0 || string.IsNullOrWhiteSpace(sheet.Name))
-                        {
-                            done = false;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            BeginStep("Resolver abas", done,
+            BeginStep("Resolver abas", _state.sheetsResolved,
                 "Descobre as abas da planilha e seus gids. Só é preciso quando você adiciona ou renomeia uma aba.");
 
             EditorGUILayout.HelpBox(
@@ -249,10 +423,13 @@ namespace FineLocalization.EditorTools
                 MessageType.Warning
             );
 
-            using (new EditorGUI.DisabledScope(_settings == null || Busy))
+            using (new EditorGUI.DisabledScope(!_state.settingsOk || Busy))
             {
                 if (GUILayout.Button("↺ Resolver abas", GUILayout.Height(24)))
+                {
                     _settings.ResolveGoogleSheets();
+                    Invalidate();
+                }
             }
 
             EndStep();
@@ -260,28 +437,15 @@ namespace FineLocalization.EditorTools
 
         private void DrawDownloadStep()
         {
-            var sheets = AllSheets();
-            var hasSheets = sheets.Count > 0;
-            var allDownloaded = hasSheets;
-
-            foreach (var sheet in sheets)
-            {
-                if (sheet.TextAsset == null)
-                    allDownloaded = false;
-            }
-
-            var charactersOk = File.Exists(CharactersAllPath);
-            var done = allDownloaded && charactersOk;
-
-            BeginStep("Baixar planilhas", done,
+            BeginStep("Baixar planilhas", _state.sheetsDownloaded && _state.charactersGenerated,
                 "Baixa os CSVs, aponta os TextAssets que o build exige e regenera os TXT de caracteres.");
 
-            if (hasSheets && !allDownloaded)
+            if (_state.hasSheets && !_state.sheetsDownloaded)
                 EditorGUILayout.HelpBox("Alguma aba está sem CSV baixado — o build WebGL falharia.", MessageType.Warning);
-            else if (allDownloaded && !charactersOk)
+            else if (_state.sheetsDownloaded && !_state.charactersGenerated)
                 EditorGUILayout.HelpBox("CSVs prontos, mas os TXT de caracteres não foram gerados.", MessageType.Warning);
 
-            using (new EditorGUI.DisabledScope(_settings == null || !hasSheets || Busy))
+            using (new EditorGUI.DisabledScope(!_state.settingsOk || !_state.hasSheets || Busy))
             {
                 if (GUILayout.Button("▼ Baixar e gerar caracteres", GUILayout.Height(26)))
                     EditorCoroutineUtility.StartCoroutineOwnerless(DownloadThenCharacters());
@@ -296,11 +460,6 @@ namespace FineLocalization.EditorTools
             EndStep();
         }
 
-        /// <summary>
-        /// Baixa e gera caracteres, na ordem certa e a partir da mesma pasta. Na v3.1 o download
-        /// oficial gravava em <c>SaveFolder</c> e setava os TextAssets mas não gerava caracteres,
-        /// enquanto o sync de caracteres gravava num caminho fixo e não setava TextAsset.
-        /// </summary>
         private IEnumerator DownloadThenCharacters()
         {
             _busyLabel = "Baixando planilhas...";
@@ -308,7 +467,7 @@ namespace FineLocalization.EditorTools
 
             yield return _settings.DownloadGoogleSheetsCoroutine(null, silent: true);
 
-            var folder = SaveFolderPath();
+            var folder = ResolveSaveFolder();
             if (!string.IsNullOrEmpty(folder))
             {
                 _busyLabel = "Gerando TXT de caracteres...";
@@ -317,36 +476,30 @@ namespace FineLocalization.EditorTools
             }
 
             _busyLabel = null;
-            _languagesScanned = false;
+            Invalidate();
             Repaint();
         }
 
         private void DrawLanguagesStep()
         {
-            EnsureLanguagesScanned();
-
-            BeginStep("Idiomas detectados", _languages.Count > 0,
+            BeginStep("Idiomas detectados", _state.languages.Count > 0,
                 "Colunas de idioma encontradas nos CSVs. É daqui que as entradas de bundle são propostas.");
 
-            if (_languages.Count == 0)
+            if (_state.languages.Count == 0)
             {
                 EditorGUILayout.HelpBox("Nenhuma coluna de idioma encontrada. Baixe as planilhas primeiro.", MessageType.Info);
             }
             else
             {
-                foreach (var language in _languages)
+                foreach (var language in _state.languages)
                 {
-                    var latin = LanguageCode.IsLatinScript(language);
                     EditorGUILayout.LabelField(
                         $"  {language}",
-                        latin ? "fonte local cobre" : "precisa de bundle de fonte",
+                        _state.needBundle.Contains(language) ? "precisa de bundle de fonte" : "fonte local cobre",
                         EditorStyles.miniLabel
                     );
                 }
             }
-
-            if (GUILayout.Button("Reescanear", GUILayout.Height(20)))
-                _languagesScanned = false;
 
             EndStep();
         }
@@ -368,8 +521,6 @@ namespace FineLocalization.EditorTools
                 return;
             }
 
-            EnsureLanguagesScanned();
-
             DrawEntriesStep();
             DrawSourceFontsStep();
             DrawGenerateStep();
@@ -378,71 +529,53 @@ namespace FineLocalization.EditorTools
             DrawVerifyStep();
         }
 
-        private List<string> LanguagesNeedingBundle()
-        {
-            var result = new List<string>();
-            foreach (var language in _languages)
-            {
-                if (!LanguageCode.IsLatinScript(language))
-                    result.Add(language);
-            }
-
-            return result;
-        }
-
         private void DrawEntriesStep()
         {
-            var needing = LanguagesNeedingBundle();
-            var missing = new List<string>();
-
-            foreach (var language in needing)
-            {
-                if (_buildConfig == null || _buildConfig.FindEntryForLanguage(language) == null)
-                    missing.Add(language);
-            }
-
-            BeginStep("Entradas de bundle", missing.Count == 0 && needing.Count > 0,
+            BeginStep("Entradas de bundle", _state.missingEntries.Count == 0 && _state.needBundle.Count > 0,
                 "Uma entrada por idioma que precisa de fonte remota, com a pasta criada. Nome do bundle e pasta saem da coluna da planilha.");
 
-            if (needing.Count == 0)
+            if (_state.needBundle.Count == 0)
             {
                 EditorGUILayout.HelpBox("Nenhum idioma detectado precisa de fonte remota.", MessageType.Info);
                 EndStep();
                 return;
             }
 
-            if (missing.Count > 0)
+            if (_state.missingEntries.Count > 0)
             {
-                EditorGUILayout.HelpBox($"Sem entrada: {string.Join(", ", missing)}", MessageType.Warning);
+                EditorGUILayout.HelpBox($"Sem entrada: {string.Join(", ", _state.missingEntries)}", MessageType.Warning);
 
-                if (GUILayout.Button($"Criar {missing.Count} entrada(s) faltante(s)", GUILayout.Height(24)))
+                if (GUILayout.Button($"Criar {_state.missingEntries.Count} entrada(s) faltante(s)", GUILayout.Height(24)))
                 {
-                    var added = _buildConfig.AddMissingEntries(missing);
+                    var added = _buildConfig.AddMissingEntries(_state.missingEntries);
                     Debug.Log($"[FineLocalization] Entradas criadas: {string.Join(", ", added)}");
-                    Rebind();
+                    Invalidate();
                 }
             }
 
-            EditorGUILayout.Space(2);
-            EditorGUILayout.LabelField("Também posso criar bundle para um idioma latino (ex: vi, tr):", EditorStyles.miniLabel);
-            foreach (var language in _languages)
-            {
-                if (!LanguageCode.IsLatinScript(language) || _buildConfig.FindEntryForLanguage(language) != null)
-                    continue;
+            DrawEntryList(showFolder: true, showSourceFont: false);
 
-                EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField($"  {language}", EditorStyles.miniLabel, GUILayout.Width(120));
-                if (GUILayout.Button("forçar bundle", EditorStyles.miniButton, GUILayout.Width(100)))
+            if (_state.latinWithoutEntry.Count > 0)
+            {
+                EditorGUILayout.Space(2);
+                EditorGUILayout.LabelField("Latino sem bundle (normal — a fonte local cobre):", EditorStyles.miniLabel);
+
+                foreach (var language in _state.latinWithoutEntry)
                 {
-                    _buildConfig.AddMissingEntries(new[] { language });
-                    Debug.LogWarning(
-                        $"[FineLocalization] Entrada criada para '{language}', que é latino. " +
-                        "Adicione o código em Force Remote Font Prefixes no RuntimeLocaleDownloader, " +
-                        "senão o download nunca acontece."
-                    );
-                    Rebind();
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField($"  {language}", EditorStyles.miniLabel, GUILayout.Width(120));
+                    if (GUILayout.Button("forçar bundle", EditorStyles.miniButton, GUILayout.Width(100)))
+                    {
+                        _buildConfig.AddMissingEntries(new[] { language });
+                        Debug.LogWarning(
+                            $"[FineLocalization] Entrada criada para '{language}', que é latino. " +
+                            "Adicione o código em Force Remote Font Prefixes no RuntimeLocaleDownloader, " +
+                            "senão o download nunca acontece."
+                        );
+                        Invalidate();
+                    }
+                    EditorGUILayout.EndHorizontal();
                 }
-                EditorGUILayout.EndHorizontal();
             }
 
             EndStep();
@@ -450,76 +583,78 @@ namespace FineLocalization.EditorTools
 
         private void DrawSourceFontsStep()
         {
-            var entries = _buildConfigSo?.FindProperty("entries");
-            var missing = 0;
-
-            if (entries != null)
-            {
-                for (int i = 0; i < entries.arraySize; i++)
-                {
-                    if (entries.GetArrayElementAtIndex(i).FindPropertyRelative("sourceFont").objectReferenceValue == null)
-                        missing++;
-                }
-            }
-
-            BeginStep("Fontes de origem", entries != null && entries.arraySize > 0 && missing == 0,
+            BeginStep("Fontes de origem", _state.entriesTotal > 0 && _state.sourceFontsMissing == 0,
                 "O único campo que ninguém deriva: qual .ttf/.otf usar em cada idioma. É escolha tipográfica e de licença.");
 
-            if (entries == null || entries.arraySize == 0)
+            if (_state.entriesTotal == 0)
             {
                 EditorGUILayout.HelpBox("Nenhuma entrada de bundle ainda.", MessageType.Info);
                 EndStep();
                 return;
             }
 
-            for (int i = 0; i < entries.arraySize; i++)
-            {
-                var entry = entries.GetArrayElementAtIndex(i);
-                var bundleName = entry.FindPropertyRelative("bundleName").stringValue;
-                var language = RemoteFontBundleBuildConfig.LanguageOf(bundleName);
+            DrawEntryList(showFolder: false, showSourceFont: true);
 
-                EditorGUILayout.PropertyField(
-                    entry.FindPropertyRelative("sourceFont"),
-                    new GUIContent(string.IsNullOrEmpty(language) ? bundleName : language)
-                );
-            }
-
-            if (missing > 0)
-                EditorGUILayout.HelpBox($"{missing} idioma(s) sem fonte de origem — o bake vai pular.", MessageType.Warning);
+            if (_state.sourceFontsMissing > 0)
+                EditorGUILayout.HelpBox($"{_state.sourceFontsMissing} idioma(s) sem fonte de origem — o bake vai pular.", MessageType.Warning);
 
             EndStep();
         }
 
+        /// <summary>Entradas do build config editáveis aqui mesmo, sem precisar de outra janela.</summary>
+        private void DrawEntryList(bool showFolder, bool showSourceFont)
+        {
+            var entries = _buildConfigSo?.FindProperty("entries");
+            if (entries == null || entries.arraySize == 0)
+                return;
+
+            for (int i = 0; i < entries.arraySize; i++)
+            {
+                var entry = entries.GetArrayElementAtIndex(i);
+                var bundleName = entry.FindPropertyRelative("bundleName");
+                var label = RemoteFontBundleBuildConfig.LanguageOf(bundleName.stringValue);
+                if (string.IsNullOrEmpty(label))
+                    label = bundleName.stringValue;
+
+                if (showFolder)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField(label, EditorStyles.miniBoldLabel, GUILayout.Width(90));
+                    EditorGUILayout.PropertyField(entry.FindPropertyRelative("folder"), GUIContent.none);
+                    EditorGUILayout.EndHorizontal();
+                }
+
+                if (showSourceFont)
+                    EditorGUILayout.PropertyField(entry.FindPropertyRelative("sourceFont"), new GUIContent(label));
+            }
+        }
+
         private void DrawGenerateStep()
         {
-            var entries = _buildConfig?.entries;
-            var baked = 0;
-            var total = 0;
-
-            if (entries != null)
-            {
-                foreach (var entry in entries)
-                {
-                    if (entry == null || string.IsNullOrWhiteSpace(entry.bundleName))
-                        continue;
-
-                    total++;
-                    if (HasBakedFont(entry))
-                        baked++;
-                }
-            }
-
-            BeginStep("Assar font assets", total > 0 && baked == total,
+            BeginStep("Assar font assets", _state.entriesTotal > 0 && _state.bakedCount == _state.entriesTotal,
                 "Gera um TMP_FontAsset estático com apenas os caracteres que aquela coluna usa.");
 
-            if (total == 0)
+            if (_state.entriesTotal == 0)
             {
                 EditorGUILayout.HelpBox("Nenhuma entrada para assar.", MessageType.Info);
                 EndStep();
                 return;
             }
 
-            EditorGUILayout.LabelField($"Assados: {baked} de {total}", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField($"Assados: {_state.bakedCount} de {_state.entriesTotal}", EditorStyles.miniLabel);
+
+            _showBakeSettings = EditorGUILayout.Foldout(_showBakeSettings, "Configurações do atlas", true);
+            if (_showBakeSettings && _buildConfigSo != null)
+            {
+                EditorGUI.indentLevel++;
+                var autoSize = _buildConfigSo.FindProperty("autoSizeToAtlas");
+                EditorGUILayout.PropertyField(autoSize, new GUIContent("Auto Size (cabe em 1 atlas)"));
+                EditorGUILayout.PropertyField(_buildConfigSo.FindProperty("atlasSize"), new GUIContent("Atlas Size"));
+                using (new EditorGUI.DisabledScope(autoSize.boolValue))
+                    EditorGUILayout.PropertyField(_buildConfigSo.FindProperty("samplingPointSize"), new GUIContent("Sampling Point Size"));
+                EditorGUILayout.PropertyField(_buildConfigSo.FindProperty("paddingPercent"), new GUIContent("Padding (%)"));
+                EditorGUI.indentLevel--;
+            }
 
             using (new EditorGUI.DisabledScope(Busy))
             {
@@ -529,7 +664,7 @@ namespace FineLocalization.EditorTools
                 {
                     AssetDatabase.SaveAssetIfDirty(_buildConfig);
                     GenerateRemoteFontAssets.GenerateAll(_buildConfig);
-                    Rebind();
+                    Invalidate();
                 }
                 GUI.backgroundColor = previous;
             }
@@ -539,36 +674,23 @@ namespace FineLocalization.EditorTools
 
         private void DrawBuildStep()
         {
-            var manifest = FontBundleManifest.FindExisting();
-            var output = OutputFolderPath();
-            var built = 0;
-            var total = 0;
-
-            if (_buildConfig?.entries != null)
-            {
-                foreach (var entry in _buildConfig.entries)
-                {
-                    if (entry == null || string.IsNullOrWhiteSpace(entry.bundleName))
-                        continue;
-
-                    total++;
-                    if (File.Exists(Path.Combine(output, entry.bundleName.Trim() + ".ft")))
-                        built++;
-                }
-            }
-
-            var manifestOk = manifest != null && manifest.HasAnyBundle;
-            BeginStep("Build dos bundles", total > 0 && built == total && manifestOk,
+            BeginStep("Build dos bundles",
+                _state.entriesTotal > 0 && _state.builtCount == _state.entriesTotal && _state.manifestOk,
                 "Empacota os bundles e grava o manifesto que o runtime lê para saber quais idiomas têm fonte.");
 
-            EditorGUILayout.LabelField($"Construídos: {built} de {total}", EditorStyles.miniLabel);
+            if (_buildConfigSo != null)
+                EditorGUILayout.PropertyField(_buildConfigSo.FindProperty("outputFolder"), new GUIContent("Output Folder"));
+
+            EditorGUILayout.LabelField($"Construídos: {_state.builtCount} de {_state.entriesTotal}", EditorStyles.miniLabel);
             EditorGUILayout.LabelField(
                 "Manifesto",
-                manifestOk ? $"{manifest.entries.Count} idioma(s), gerado em {manifest.generatedAt}" : "não gerado",
+                _state.manifestOk
+                    ? $"{_state.manifestCount} idioma(s), gerado em {_state.manifestGeneratedAt}"
+                    : "não gerado",
                 EditorStyles.miniLabel
             );
 
-            if (!manifestOk)
+            if (!_state.manifestOk)
             {
                 EditorGUILayout.HelpBox(
                     "Sem manifesto o jogo não sabe que existem fontes remotas — todo idioma não-latino " +
@@ -577,7 +699,7 @@ namespace FineLocalization.EditorTools
                 );
             }
 
-            using (new EditorGUI.DisabledScope(Busy || total == 0))
+            using (new EditorGUI.DisabledScope(Busy || _state.entriesTotal == 0))
             {
                 var previous = GUI.backgroundColor;
                 GUI.backgroundColor = new Color(0.55f, 0.85f, 1f);
@@ -585,24 +707,29 @@ namespace FineLocalization.EditorTools
                 {
                     AssetDatabase.SaveAssetIfDirty(_buildConfig);
                     BuildRemoteFontBundles.BuildWebGlFontBundles();
-                    Rebind();
+                    Invalidate();
                 }
                 GUI.backgroundColor = previous;
             }
+
+            EditorGUILayout.LabelField(
+                "Assar antes, buildar depois: o bake lê os characters_<lang>.txt e o build empacota " +
+                "o que o bake produziu, gravando o manifesto a partir dos artefatos reais.",
+                EditorStyles.wordWrappedMiniLabel
+            );
 
             EndStep();
         }
 
         private void DrawUploadStep()
         {
-            var manifest = FontBundleManifest.FindExisting();
-            var key = UploadDoneKeyPrefix + (manifest != null ? manifest.generatedAt : "none");
+            var key = UploadDoneKeyPrefix + (_state.manifestGeneratedAt ?? "none");
             var acknowledged = EditorPrefs.GetBool(key, false);
 
             BeginStep("Enviar para o CDN", acknowledged,
                 "O único passo que nenhuma checagem alcança: os arquivos precisam existir no seu CDN.");
 
-            if (manifest == null || !manifest.HasAnyBundle)
+            if (!_state.manifestOk)
             {
                 EditorGUILayout.HelpBox("Construa os bundles primeiro.", MessageType.Info);
                 EndStep();
@@ -610,22 +737,20 @@ namespace FineLocalization.EditorTools
             }
 
             EditorGUILayout.LabelField("Arquivos a enviar:", EditorStyles.miniBoldLabel);
-            foreach (var entry in manifest.entries)
-            {
-                if (entry != null)
-                    EditorGUILayout.LabelField($"  {entry.language}", entry.bundleFileName, EditorStyles.miniLabel);
-            }
+            foreach (var line in _state.manifestFiles)
+                EditorGUILayout.LabelField("  " + line, EditorStyles.miniLabel);
 
             EditorGUILayout.LabelField(
                 "O caminho completo depende do Base Bundle URL e do Game Id do RuntimeLocaleDownloader — " +
-                "o inspector dele mostra a URL final de cada idioma.",
+                "o inspector dele mostra a URL final de cada idioma. No Editor, sem CDN configurado, " +
+                "o jogo lê direto desta pasta.",
                 EditorStyles.wordWrappedMiniLabel
             );
 
             EditorGUILayout.Space(2);
             if (GUILayout.Button("Revelar pasta dos bundles", GUILayout.Height(20)))
             {
-                var full = Path.GetFullPath(OutputFolderPath());
+                var full = Path.GetFullPath(_state.outputFolder);
                 if (Directory.Exists(full))
                     EditorUtility.RevealInFinder(full);
             }
@@ -655,10 +780,6 @@ namespace FineLocalization.EditorTools
             EndStep();
         }
 
-        /// <summary>
-        /// Contradições que não aparecem como erro em lugar nenhum e só se manifestam em Play —
-        /// ou pior, em produção.
-        /// </summary>
         private List<string> CollectProblems()
         {
             var problems = new List<string>();
@@ -666,17 +787,16 @@ namespace FineLocalization.EditorTools
             foreach (var problem in LanguageCode.ValidateTables())
                 problems.Add("Tabela de idiomas: " + problem);
 
-            var configs = RemoteFontBundleBuildConfig.FindAllConfigPaths();
-            if (configs.Length > 1)
+            if (_state.configPaths.Length > 1)
             {
                 problems.Add(
-                    $"Há {configs.Length} RemoteFontBundleBuildConfig no projeto e qual vale não é estável: " +
-                    string.Join(", ", configs)
+                    $"Há {_state.configPaths.Length} RemoteFontBundleBuildConfig no projeto e qual vale " +
+                    "não é estável: " + string.Join(", ", _state.configPaths)
                 );
             }
 
             var manifest = FontBundleManifest.FindExisting();
-            var output = OutputFolderPath();
+            var output = _state.outputFolder;
 
             if (_buildConfig?.entries != null)
             {
@@ -708,15 +828,10 @@ namespace FineLocalization.EditorTools
                             problems.Add($"'{bundleName}': a fonte assada não tem {missing} glifo(s) da coluna.");
                     }
 
-                    var bundlePath = Path.Combine(output, bundleName + ".ft");
-                    if (!File.Exists(bundlePath))
-                    {
+                    if (!File.Exists(Path.Combine(output, bundleName + ".ft")))
                         problems.Add($"'{bundleName}' não foi construído ainda.");
-                    }
                     else if (manifest?.Find(language) == null)
-                    {
                         problems.Add($"'{bundleName}' existe em disco mas não está no manifesto — rode Build Bundles.");
-                    }
                 }
             }
 
@@ -724,12 +839,15 @@ namespace FineLocalization.EditorTools
             {
                 foreach (var entry in manifest.entries)
                 {
-                    if (entry == null)
-                        continue;
-
-                    if (!File.Exists(Path.Combine(output, entry.bundleFileName)))
+                    if (entry != null && !File.Exists(Path.Combine(output, entry.bundleFileName)))
                         problems.Add($"O manifesto declara '{entry.bundleFileName}', que não existe em {output}.");
                 }
+            }
+
+            foreach (var language in _state.needBundle)
+            {
+                if (_buildConfig == null || _buildConfig.FindEntryForLanguage(language) == null)
+                    problems.Add($"A coluna '{language}' precisa de fonte remota e não tem entrada de bundle.");
             }
 
             return problems;
@@ -741,13 +859,6 @@ namespace FineLocalization.EditorTools
 
         private static string CharactersAllPath =>
             "Assets/FineLocalization/Editor/GeneratedCharacters/characters_all.txt";
-
-        private string OutputFolderPath()
-        {
-            return _buildConfig != null && !string.IsNullOrWhiteSpace(_buildConfig.outputFolder)
-                ? _buildConfig.outputFolder
-                : "AssetBundles/WebGL/Fonts";
-        }
 
         /// <summary>
         /// Settings do projeto <b>sem criar</b>. Ler <c>LocalizationSettings.Instance</c> cria o
@@ -762,7 +873,7 @@ namespace FineLocalization.EditorTools
             return Resources.Load<LocalizationSettings>("LocalizationSettings");
         }
 
-        private string SaveFolderPath()
+        private string ResolveSaveFolder()
         {
             if (_settings == null || _settings.SaveFolder == null)
                 return null;
@@ -799,49 +910,6 @@ namespace FineLocalization.EditorTools
 
             return result;
         }
-
-        private void EnsureLanguagesScanned()
-        {
-            if (_languagesScanned)
-                return;
-
-            _languagesScanned = true;
-            _languages.Clear();
-
-            var folder = SaveFolderPath();
-            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
-                return;
-
-            var skip = _settings != null ? _settings.skip : 0;
-
-            foreach (var path in Directory.GetFiles(folder, "*.csv", SearchOption.TopDirectoryOnly))
-            {
-                string content;
-                try
-                {
-                    content = File.ReadAllText(path, Encoding.UTF8);
-                }
-                catch
-                {
-                    continue;
-                }
-
-                var lines = LocalizationManager.GetLines(content);
-                if (lines.Count == 0)
-                    continue;
-
-                var header = LocalizationManager.GetColumns(lines[0]);
-                for (int i = skip + 1; i < header.Count; i++)
-                {
-                    var language = LanguageCode.Normalize(header[i]);
-                    if (language.Length > 0 && !_languages.Contains(language))
-                        _languages.Add(language);
-                }
-            }
-        }
-
-        private static bool HasBakedFont(RemoteFontBundleBuildConfig.Entry entry) =>
-            HasBakedFont(entry, out _);
 
         private static bool HasBakedFont(RemoteFontBundleBuildConfig.Entry entry, out TMP_FontAsset font)
         {
