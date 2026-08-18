@@ -216,6 +216,25 @@ Localization.SetLanguage("pt-br");
 
 Adicione o componente `RuntimeLocaleDownloader` em um GameObject persistente da cena inicial. Ele é a configuração da API `Localization`.
 
+### CSV em WebGL e CORS
+
+Em WebGL o navegador exige cabeçalho CORS na resposta. O export de planilha **pública** do Google
+normalmente responde com ele, então `Allow Direct Google Download In WebGL` vem **ligado**: o
+comportamento padrão é tentar baixar.
+
+Quando o navegador bloqueia, nada quebra — o download falha, o log explica (`Provável bloqueio de
+CORS…`) e o jogo segue com os CSVs embutidos no build. Por isso tentar é a opção segura.
+
+Se o seu caso é bloqueado de verdade, há duas saídas:
+
+- **`Csv Url Override`** apontando para um proxy/CDN com CORS. Mais confiável, e evita o erro no
+  console. `{0}` = TableId, `{1}` = gid.
+- **Desligar `Allow Direct Google Download In WebGL`** para nem tentar, usando só os CSVs do build.
+
+> A v3.0 até a v3.4 desligavam essa tentativa por padrão, presumindo que o Google sempre bloqueia.
+> Na prática funciona para a maioria das planilhas públicas, e desligar por padrão fazia o jogo
+> shipar com tradução congelada no momento do build sem ninguém perceber.
+
 ### O download nunca espera pelo idioma
 
 Um CSV do FineLocalization contém **todas** as colunas de idioma. Por isso o pipeline é:
@@ -233,8 +252,9 @@ Trocar de idioma depois é instantâneo: os dados já estão em memória e só a
 
 | Campo | O que faz |
 |-------|-----------|
-| `Csv Source` | **Auto** (padrão): baixa em Editor/Desktop/Mobile; em WebGL usa os CSVs embutidos, porque o Google Sheets responde ao export sem cabeçalho CORS. **Remote**: sempre baixa. **Bundled**: nunca baixa |
-| `Csv Url Override` | URL de proxy/CDN com CORS — `{0}` = TableId, `{1}` = gid. Preenchido, liga o download também em WebGL no modo Auto |
+| `Csv Source` | **Auto** (padrão): baixa em todas as plataformas. **Remote**: sempre baixa. **Bundled**: nunca baixa |
+| `Csv Url Override` | URL de proxy/CDN com CORS — `{0}` = TableId, `{1}` = gid. Vazio = export direto do Google |
+| `Allow Direct Google Download In WebGL` | Ligado por padrão. Em WebGL sem proxy, tenta o export direto do Google. Planilha pública normalmente responde com CORS; falhando, o jogo cai nos CSVs embutidos |
 | `Startup Language` | Força um idioma no boot, ignorando URL e sistema. Vazio = usa a cadeia |
 | `Usar ?lang= da URL` | Lê `?lang=`, `?locale=`, `?culture=`, `?language=`, `?lng=` da URL de lançamento |
 | `Usar idioma do sistema` | Usa o idioma do SO/navegador quando nada mais define um |
@@ -530,7 +550,7 @@ Boas práticas já aplicadas no pacote (você não precisa fazer nada extra):
 ### Recomendações de projeto
 
 1. **Desligue `EnableLogs`** nas builds de release
-2. Use **`Csv Source = Auto`** — ele já escolhe bundled em WebGL e remoto nas demais plataformas
+2. Use **`Csv Source = Auto`** — baixa em todas as plataformas, com fallback automático para os CSVs embutidos quando o download falha
 3. Use **Remote Fonts** para idiomas com muitos glyphs
 4. Mantenha as planilhas **enxutas** — uma chave por linha; evite valores vazios desnecessários
 5. Sincronize as planilhas no Editor antes de todo build de release
@@ -650,7 +670,7 @@ Os nomes antigos continuam funcionando marcados como `[Obsolete]` — o projeto 
 | Campo v2 | O que fazer |
 |----------|-------------|
 | `downloadOnStart` / `useLocalSheet` | `Csv Source`: **Bundled** para o antigo `false`, **Auto** para `true` |
-| `allowDirectGoogleDownloadInWebGL` | `Csv Source = Remote` + `Csv Url Override` |
+| `allowDirectGoogleDownloadInWebGL` | Mesmo nome, mesmo comportamento — voltou na v3.5 ligado por padrão |
 | `csvUrlPatternOverride` | Renomeado para `Csv Url Override` |
 | `waitForExplicitRequestedLanguage` | **Removido** — era a causa do travamento; o download não espera mais por idioma |
 | `requestedLanguageWaitTimeoutSeconds` | **Removido** pelo mesmo motivo |

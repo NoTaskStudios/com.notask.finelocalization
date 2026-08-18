@@ -76,6 +76,11 @@ namespace FineLocalization.Scripts.Runtime
         [Tooltip("Opcional. URL de um proxy/CDN com CORS habilitado. Use {0} para o TableId e {1} para o gid. Vazio = export direto do Google Sheets.")]
         [SerializeField] private string csvUrlOverride;
 
+        [Tooltip("Em WebGL sem proxy, tenta o export direto do Google Sheets. Planilha pública " +
+                 "normalmente responde com CORS, mas não é garantido — falhando, o jogo cai nos " +
+                 "CSVs embutidos. Desligue só se quiser evitar a tentativa e o erro no console.")]
+        [SerializeField] private bool allowDirectGoogleDownloadInWebGL = true;
+
         [Header("Idioma")]
         [Tooltip("Força um idioma no boot, ignorando URL e sistema. Vazio = usa a cadeia de resolução. Ex: ja-jp")]
         [SerializeField] private string startupLanguage;
@@ -537,9 +542,11 @@ namespace FineLocalization.Scripts.Runtime
                         return false;
                     default:
 #if UNITY_WEBGL && !UNITY_EDITOR
-                        // O Google Sheets responde ao export com um redirect sem cabeçalho CORS,
-                        // que o navegador bloqueia. Só baixamos se houver um proxy configurado.
-                        return !string.IsNullOrWhiteSpace(csvUrlOverride);
+                        // Com proxy, sempre baixa. Sem proxy, tenta direto no Google quando
+                        // permitido — é o comportamento da v2, e funciona para a maioria das
+                        // planilhas públicas. Quando o navegador bloqueia por CORS o download
+                        // falha, DescribeFailure explica, e o jogo segue com os CSVs embutidos.
+                        return !string.IsNullOrWhiteSpace(csvUrlOverride) || allowDirectGoogleDownloadInWebGL;
 #else
                         return true;
 #endif
@@ -666,8 +673,9 @@ namespace FineLocalization.Scripts.Runtime
                  request.result == UnityWebRequest.Result.ProtocolError))
             {
                 description +=
-                    " | Provável bloqueio de CORS: confirme no console do navegador (F12). Configure Csv Url Override " +
-                    "com um proxy/CDN com CORS, ou use Csv Source = Bundled.";
+                    " | Provável bloqueio de CORS: confirme no console do navegador (F12). O jogo segue " +
+                    "com os CSVs embutidos. Para baixar mesmo assim, configure Csv Url Override com um " +
+                    "proxy/CDN com CORS; para nem tentar, desligue Allow Direct Google Download In WebGL.";
             }
 #endif
 

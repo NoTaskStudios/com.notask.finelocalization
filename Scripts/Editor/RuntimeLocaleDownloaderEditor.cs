@@ -18,6 +18,7 @@ namespace FineLocalization.EditorTools
     {
         private SerializedProperty _source;
         private SerializedProperty _csvUrlOverride;
+        private SerializedProperty _allowDirectGoogleDownloadInWebGL;
         private SerializedProperty _startupLanguage;
         private SerializedProperty _useUrlQueryLanguage;
         private SerializedProperty _useSystemLanguage;
@@ -43,6 +44,7 @@ namespace FineLocalization.EditorTools
             var so = serializedObject;
             _source = so.FindProperty("source");
             _csvUrlOverride = so.FindProperty("csvUrlOverride");
+            _allowDirectGoogleDownloadInWebGL = so.FindProperty("allowDirectGoogleDownloadInWebGL");
             _startupLanguage = so.FindProperty("startupLanguage");
             _useUrlQueryLanguage = so.FindProperty("useUrlQueryLanguage");
             _useSystemLanguage = so.FindProperty("useSystemLanguage");
@@ -96,7 +98,20 @@ namespace FineLocalization.EditorTools
             var hasProxy = !string.IsNullOrWhiteSpace(_csvUrlOverride.stringValue);
 
             if (mode != RuntimeLocaleDownloader.CsvSource.Bundled)
+            {
                 EditorGUILayout.PropertyField(_csvUrlOverride, new GUIContent("Csv Url Override"));
+
+                using (new EditorGUI.DisabledScope(hasProxy))
+                {
+                    EditorGUILayout.PropertyField(
+                        _allowDirectGoogleDownloadInWebGL,
+                        new GUIContent("Allow Direct Google Download In WebGL")
+                    );
+                }
+            }
+
+            var allowsDirect = _allowDirectGoogleDownloadInWebGL == null ||
+                               _allowDirectGoogleDownloadInWebGL.boolValue;
 
             switch (mode)
             {
@@ -104,9 +119,12 @@ namespace FineLocalization.EditorTools
                     EditorGUILayout.HelpBox(
                         hasProxy
                             ? "Auto + proxy configurado: baixa em todas as plataformas, inclusive WebGL."
-                            : "Auto: baixa em Editor/Desktop/Mobile. Em WebGL usa os CSVs embutidos, porque o " +
-                              "Google Sheets responde ao export sem cabeçalho CORS e o navegador bloqueia. " +
-                              "Preencha Csv Url Override com um proxy/CDN para baixar também em WebGL.",
+                            : allowsDirect
+                                ? "Auto: baixa em todas as plataformas. Em WebGL tenta o export direto do " +
+                                  "Google — planilha pública normalmente responde com CORS. Se o navegador " +
+                                  "bloquear, o jogo cai nos CSVs embutidos e o log explica."
+                                : "Auto sem download direto: em WebGL usa só os CSVs embutidos. Preencha Csv " +
+                                  "Url Override com um proxy/CDN para baixar também em WebGL.",
                         MessageType.Info
                     );
                     break;
