@@ -138,7 +138,10 @@ namespace FineLocalization.EditorTools
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
             if (GUILayout.Button("Reatualizar", EditorStyles.toolbarButton, GUILayout.Width(90)))
+            {
                 Invalidate();
+                GUIUtility.ExitGUI();
+            }
 
             GUILayout.FlexibleSpace();
 
@@ -372,6 +375,7 @@ namespace FineLocalization.EditorTools
                     // Só tocar em Instance já cria o asset e o pointer.
                     _settings = LocalizationSettings.Instance;
                     Invalidate();
+                    GUIUtility.ExitGUI();
                 }
             }
             else if (GUILayout.Button("Selecionar no Project", GUILayout.Height(20)))
@@ -429,6 +433,7 @@ namespace FineLocalization.EditorTools
                 {
                     _settings.ResolveGoogleSheets();
                     Invalidate();
+                    GUIUtility.ExitGUI();
                 }
             }
 
@@ -550,6 +555,7 @@ namespace FineLocalization.EditorTools
                     var added = _buildConfig.AddMissingEntries(_state.missingEntries);
                     Debug.Log($"[FineLocalization] Entradas criadas: {string.Join(", ", added)}");
                     Invalidate();
+                    GUIUtility.ExitGUI();
                 }
             }
 
@@ -573,6 +579,7 @@ namespace FineLocalization.EditorTools
                             "senão o download nunca acontece."
                         );
                         Invalidate();
+                        GUIUtility.ExitGUI();
                     }
                     EditorGUILayout.EndHorizontal();
                 }
@@ -665,6 +672,7 @@ namespace FineLocalization.EditorTools
                     AssetDatabase.SaveAssetIfDirty(_buildConfig);
                     GenerateRemoteFontAssets.GenerateAll(_buildConfig);
                     Invalidate();
+                    GUIUtility.ExitGUI();
                 }
                 GUI.backgroundColor = previous;
             }
@@ -708,6 +716,7 @@ namespace FineLocalization.EditorTools
                     AssetDatabase.SaveAssetIfDirty(_buildConfig);
                     BuildRemoteFontBundles.BuildWebGlFontBundles();
                     Invalidate();
+                    GUIUtility.ExitGUI();
                 }
                 GUI.backgroundColor = previous;
             }
