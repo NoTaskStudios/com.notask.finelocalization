@@ -152,6 +152,24 @@ namespace FineLocalization.EditorTools
 
             if (fontAsset == null)
             {
+                // O FontEngine às vezes recusa uma face que acabou de servir outra entrada no mesmo
+                // lote (ver ReleaseFontEngineFace). Uma segunda tentativa depois de soltar resolve a
+                // maioria dos casos sem exigir um novo clique do usuário.
+                ReleaseFontEngineFace();
+                fontAsset = TMP_FontAsset.CreateFontAsset(
+                    entry.sourceFont,
+                    pointSize,
+                    padding,
+                    GlyphRenderMode.SDFAA,
+                    atlasSize,
+                    atlasSize,
+                    AtlasPopulationMode.Dynamic,
+                    enableMultiAtlasSupport: true
+                );
+            }
+
+            if (fontAsset == null)
+            {
                 Debug.LogError($"[Font Bake] '{bundleName}': CreateFontAsset retornou null (fonte ilegível?).");
                 return false;
             }
@@ -180,6 +198,7 @@ namespace FineLocalization.EditorTools
             Debug.Log(
                 $"[Font Bake] '{bundleName}' → '{assetPath}' | name='{assetName}' | chars={CountUnique(characters)} | atlas={atlasSize} pt={pointSize} pad={padding} | pages={pages}"
             );
+            ReleaseFontEngineFace();
             return true;
         }
 
@@ -444,6 +463,7 @@ namespace FineLocalization.EditorTools
                 probe.TryAddCharacters(characters, out fontLacks);
                 supported = RemoveChars(characters, fontLacks);
                 DestroyFontAsset(probe);
+                ReleaseFontEngineFace();
             }
 
             if (string.IsNullOrEmpty(supported))
@@ -467,6 +487,7 @@ namespace FineLocalization.EditorTools
                     candidate.TryAddCharacters(supported, out var miss);
                     fits = string.IsNullOrEmpty(miss) && (candidate.atlasTextures == null || candidate.atlasTextures.Length <= 1);
                     DestroyFontAsset(candidate);
+                    ReleaseFontEngineFace();
                 }
 
                 if (fits)
@@ -517,6 +538,25 @@ namespace FineLocalization.EditorTools
                 UnityEngine.Object.DestroyImmediate(fontAsset.material);
 
             UnityEngine.Object.DestroyImmediate(fontAsset);
+        }
+
+        /// <summary>
+        /// O FontEngine nativo do TextCore mantém só uma "font face" carregada por vez. Um bake com
+        /// várias entradas chama CreateFontAsset dezenas de vezes seguidas (probe + busca binária por
+        /// entrada) sem nunca soltar essa face — em fontes CJK grandes isso deixa o engine num estado
+        /// ruim e uma chamada tardia (normalmente a última entrada do lote) volta null sem motivo
+        /// aparente. Soltar a face aqui, entre uma chamada e outra, evita esse acúmulo.
+        /// </summary>
+        private static void ReleaseFontEngineFace()
+        {
+            try
+            {
+                FontEngine.UnloadFontFace();
+            }
+            catch
+            {
+                // Sem face carregada — nada a soltar.
+            }
         }
 
         private static string GetLanguageFromBundleName(string bundleName)
