@@ -107,49 +107,57 @@ namespace FineLocalization.EditorTools
                 return false;
             }
 
-            // CreateFontAsset precisa dos bytes brutos do .ttf/.otf pra rasterizar. Se "Include Font
-            // Data" estiver desmarcado no importador (comum — o operador desliga de propósito pra o
-            // .ttf/.otf não ir junto no build), o Font fica só com metadados e a chamada volta null.
-            // Liga na marra só pro bake e desliga de novo logo depois, sucesso ou falha.
-            var sourceFont = entry.sourceFont;
-            var didEnableFontData = EnableFontDataForBake(ref sourceFont, out var fontImportPath, out var fontDataWasEnabled);
-
-            try
+            var characters = SanitizeCharacters(BuildRemoteFontBundles.LoadExpectedCharactersForBundle(bundleName, out _));
+            if (string.IsNullOrEmpty(characters))
             {
-                var characters = SanitizeCharacters(BuildRemoteFontBundles.LoadExpectedCharactersForBundle(bundleName, out _));
-                if (string.IsNullOrEmpty(characters))
-                {
-                    Debug.LogWarning($"[Font Bake] '{bundleName}': nenhum characters_<lang>.txt encontrado. Sincronize as planilhas primeiro (gera em Assets/FineLocalization/Editor/GeneratedCharacters/).");
-                    return false;
-                }
+                Debug.LogWarning($"[Font Bake] '{bundleName}': nenhum characters_<lang>.txt encontrado. Sincronize as planilhas primeiro (gera em Assets/FineLocalization/Editor/GeneratedCharacters/).");
+                return false;
+            }
 
-                var atlasSize = Mathf.Clamp(config.atlasSize <= 0 ? 1024 : config.atlasSize, 256, 8192);
-                var paddingPercent = config.paddingPercent <= 0f ? 10f : config.paddingPercent;
+            var atlasSize = Mathf.Clamp(config.atlasSize <= 0 ? 1024 : config.atlasSize, 256, 8192);
+            var paddingPercent = config.paddingPercent <= 0f ? 10f : config.paddingPercent;
 
-                int pointSize;
-                if (config.autoSizeToAtlas)
+            int pointSize;
+            if (config.autoSizeToAtlas)
+            {
+                pointSize = FindMaxPointSizeForSingleAtlas(entry.sourceFont, characters, atlasSize, paddingPercent, out _);
+                if (pointSize <= 0)
                 {
-                    pointSize = FindMaxPointSizeForSingleAtlas(sourceFont, characters, atlasSize, paddingPercent, out _);
-                    if (pointSize <= 0)
-                    {
-                        pointSize = MinAutoPointSize;
-                        Debug.LogWarning($"[Font Bake] '{bundleName}': subset grande demais pra caber em 1 atlas {atlasSize}². Usando point size {pointSize} com multi-atlas (várias páginas).");
-                    }
-                    else
-                    {
-                        Debug.Log($"[Font Bake] '{bundleName}': auto-size → point size {pointSize} (cabe em 1 atlas {atlasSize}²).");
-                    }
+                    pointSize = MinAutoPointSize;
+                    Debug.LogWarning($"[Font Bake] '{bundleName}': subset grande demais pra caber em 1 atlas {atlasSize}². Usando point size {pointSize} com multi-atlas (várias páginas).");
                 }
                 else
                 {
-                    pointSize = config.samplingPointSize <= 0 ? 60 : config.samplingPointSize;
+                    Debug.Log($"[Font Bake] '{bundleName}': auto-size → point size {pointSize} (cabe em 1 atlas {atlasSize}²).");
                 }
+            }
+            else
+            {
+                pointSize = config.samplingPointSize <= 0 ? 60 : config.samplingPointSize;
+            }
 
-                var padding = Mathf.Max(1, Mathf.RoundToInt(pointSize * paddingPercent / 100f));
+            var padding = Mathf.Max(1, Mathf.RoundToInt(pointSize * paddingPercent / 100f));
 
-                // Create dynamic first so TryAddCharacters can rasterize the requested glyphs into the atlas.
-                var fontAsset = TMP_FontAsset.CreateFontAsset(
-                    sourceFont,
+            // Create dynamic first so TryAddCharacters can rasterize the requested glyphs into the atlas.
+            var fontAsset = TMP_FontAsset.CreateFontAsset(
+                entry.sourceFont,
+                pointSize,
+                padding,
+                GlyphRenderMode.SDFAA,
+                atlasSize,
+                atlasSize,
+                AtlasPopulationMode.Dynamic,
+                enableMultiAtlasSupport: true
+            );
+
+            if (fontAsset == null)
+            {
+                // O FontEngine às vezes recusa uma face que acabou de servir outra entrada no mesmo
+                // lote (ver ReleaseFontEngineFace). Uma segunda tentativa depois de soltar resolve a
+                // maioria dos casos sem exigir um novo clique do usuário.
+                ReleaseFontEngineFace();
+                fontAsset = TMP_FontAsset.CreateFontAsset(
+                    entry.sourceFont,
                     pointSize,
                     padding,
                     GlyphRenderMode.SDFAA,
@@ -158,108 +166,43 @@ namespace FineLocalization.EditorTools
                     AtlasPopulationMode.Dynamic,
                     enableMultiAtlasSupport: true
                 );
-
-                if (fontAsset == null)
-                {
-                    // O FontEngine às vezes recusa uma face que acabou de servir outra entrada no mesmo
-                    // lote (ver ReleaseFontEngineFace). Uma segunda tentativa depois de soltar resolve a
-                    // maioria dos casos sem exigir um novo clique do usuário.
-                    ReleaseFontEngineFace();
-                    fontAsset = TMP_FontAsset.CreateFontAsset(
-                        sourceFont,
-                        pointSize,
-                        padding,
-                        GlyphRenderMode.SDFAA,
-                        atlasSize,
-                        atlasSize,
-                        AtlasPopulationMode.Dynamic,
-                        enableMultiAtlasSupport: true
-                    );
-                }
-
-                if (fontAsset == null)
-                {
-                    Debug.LogError(
-                        $"[Font Bake] '{bundleName}': CreateFontAsset retornou null (fonte ilegível?). " +
-                        "Verifique se \"Include Font Data\" está marcado no importador do .ttf/.otf."
-                    );
-                    return false;
-                }
-
-                fontAsset.isMultiAtlasTexturesEnabled = true;
-                fontAsset.TryAddCharacters(characters, out var missing);
-                if (!string.IsNullOrEmpty(missing))
-                {
-                    Debug.LogWarning(
-                        $"[Font Bake] '{bundleName}': a fonte '{sourceFont.name}' não possui {CountUnique(missing)} glifo(s) pedido(s) — ficarão como caixa. Amostra: {Truncate(missing, 60)}"
-                    );
-                }
-
-                // Freeze as Static so the runtime never tries to expand the atlas from the source font.
-                fontAsset.atlasPopulationMode = AtlasPopulationMode.Static;
-
-                ResolveTarget(folderPath, sourceFont, out var assetPath, out assetName);
-                fontAsset.name = assetName;
-
-                language = GetLanguageFromBundleName(bundleName);
-
-                var materialTemplate = CreateMaterialTemplate(assetPath);
-                SaveFontAsset(fontAsset, assetPath, materialTemplate);
-
-                var pages = fontAsset.atlasTextures?.Length ?? 0;
-                Debug.Log(
-                    $"[Font Bake] '{bundleName}' → '{assetPath}' | name='{assetName}' | chars={CountUnique(characters)} | atlas={atlasSize} pt={pointSize} pad={padding} | pages={pages}"
-                );
-                ReleaseFontEngineFace();
-                return true;
             }
-            finally
+
+            if (fontAsset == null)
             {
-                // Sempre desliga de volta se fomos nós que ligamos — o .ttf/.otf bruto nunca pode
-                // sobreviver com "Include Font Data" ligado depois do bake, senão vai junto no build.
-                if (didEnableFontData)
-                    RestoreFontDataAfterBake(fontImportPath, fontDataWasEnabled);
+                Debug.LogError(
+                    $"[Font Bake] '{bundleName}': CreateFontAsset retornou null (fonte ilegível?). " +
+                    "Verifique se \"Include Font Data\" está marcado no importador do .ttf/.otf."
+                );
+                return false;
             }
-        }
 
-        /// <summary>
-        /// Liga "Include Font Data" no importador do <paramref name="font"/> se estiver desligado, e
-        /// recarrega a referência (o reimport pode recriar o objeto do Font). Devolve false — sem
-        /// mexer em nada — se já estava ligado ou se o importador não é um TrueTypeFontImporter.
-        /// </summary>
-        private static bool EnableFontDataForBake(ref Font font, out string fontPath, out bool originalValue)
-        {
-            fontPath = font != null ? AssetDatabase.GetAssetPath(font) : null;
-            originalValue = true;
+            fontAsset.isMultiAtlasTexturesEnabled = true;
+            fontAsset.TryAddCharacters(characters, out var missing);
+            if (!string.IsNullOrEmpty(missing))
+            {
+                Debug.LogWarning(
+                    $"[Font Bake] '{bundleName}': a fonte '{entry.sourceFont.name}' não possui {CountUnique(missing)} glifo(s) pedido(s) — ficarão como caixa. Amostra: {Truncate(missing, 60)}"
+                );
+            }
 
-            if (string.IsNullOrEmpty(fontPath))
-                return false;
+            // Freeze as Static so the runtime never tries to expand the atlas from the source font.
+            fontAsset.atlasPopulationMode = AtlasPopulationMode.Static;
 
-            var importer = AssetImporter.GetAtPath(fontPath) as TrueTypeFontImporter;
-            if (importer == null)
-                return false;
+            ResolveTarget(folderPath, entry.sourceFont, out var assetPath, out assetName);
+            fontAsset.name = assetName;
 
-            originalValue = importer.fontTTFData;
-            if (originalValue)
-                return false;
+            language = GetLanguageFromBundleName(bundleName);
 
-            importer.fontTTFData = true;
-            importer.SaveAndReimport();
-            font = AssetDatabase.LoadAssetAtPath<Font>(fontPath);
+            var materialTemplate = CreateMaterialTemplate(assetPath);
+            SaveFontAsset(fontAsset, assetPath, materialTemplate);
+
+            var pages = fontAsset.atlasTextures?.Length ?? 0;
+            Debug.Log(
+                $"[Font Bake] '{bundleName}' → '{assetPath}' | name='{assetName}' | chars={CountUnique(characters)} | atlas={atlasSize} pt={pointSize} pad={padding} | pages={pages}"
+            );
+            ReleaseFontEngineFace();
             return true;
-        }
-
-        private static void RestoreFontDataAfterBake(string fontPath, bool originalValue)
-        {
-            if (string.IsNullOrEmpty(fontPath))
-                return;
-
-            var importer = AssetImporter.GetAtPath(fontPath) as TrueTypeFontImporter;
-            if (importer == null)
-                return;
-
-            importer.fontTTFData = originalValue;
-            importer.SaveAndReimport();
         }
 
         private static void SaveFontAsset(TMP_FontAsset fontAsset, string assetPath, Material materialTemplate)
