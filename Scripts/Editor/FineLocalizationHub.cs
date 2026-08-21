@@ -7,6 +7,7 @@ using System.IO;
 using System.Text;
 using FineLocalization.Editor;
 using FineLocalization.Runtime;
+using FineLocalization.Scripts.Runtime;
 using FineLocalization.Utils;
 using TMPro;
 using Unity.EditorCoroutines.Editor;
