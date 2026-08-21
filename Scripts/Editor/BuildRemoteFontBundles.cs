@@ -481,12 +481,23 @@ namespace FineLocalization.EditorTools
 
         internal static string LoadExpectedCharactersForBundle(string bundleName, out List<string> sourceFiles)
         {
+            return LoadExpectedCharactersForLanguage(GetLanguageFromBundleName(bundleName), out sourceFiles);
+        }
+
+        /// <summary>
+        /// Caracteres que a(s) coluna(s) de <paramref name="language"/> pedem, unidos num só texto.
+        /// Serve tanto para validar a fonte de um bundle quanto para validar as fontes locais de um
+        /// idioma que não tem bundle — o segundo caso é o que faltava, e era por onde passava um
+        /// idioma Latin com acentuação estendida (vi) sem ninguém conferir glifo nenhum.
+        /// </summary>
+        internal static string LoadExpectedCharactersForLanguage(string language, out List<string> sourceFiles)
+        {
             sourceFiles = new List<string>();
 
             if (!Directory.Exists(GeneratedCharactersFolder))
                 return string.Empty;
 
-            var bundleLanguage = GetLanguageFromBundleName(bundleName);
+            var bundleLanguage = LanguageCode.Normalize(language);
             if (string.IsNullOrEmpty(bundleLanguage))
                 return string.Empty;
 

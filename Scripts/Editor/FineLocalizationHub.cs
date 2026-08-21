@@ -31,8 +31,26 @@ namespace FineLocalization.EditorTools
         private const string UploadDoneKeyPrefix = "FineLocalization_Hub_UploadDone_";
         private const string DefaultOutputFolder = "AssetBundles/WebGL/Fonts";
 
+        /// <summary>Glifos faltando listados por fonte antes de resumir o resto como "+N".</summary>
+        private const int MissingGlyphSampleSize = 12;
+
         private static readonly Color DoneColor = new(0.40f, 1.00f, 0.50f);
         private static readonly Color WarnColor = new(1.00f, 0.82f, 0.35f);
+
+        /// <summary>Resultado da conferência de glifos das fontes locais para um idioma.</summary>
+        private class LocalCoverage
+        {
+            /// <summary>Glifos que faltam, somados sem repetir idioma-fonte. 0 = coberto.</summary>
+            public int missingCount;
+
+            /// <summary>Amostra legível dos que faltam, para o dev achar o charset certo.</summary>
+            public string sample = string.Empty;
+
+            /// <summary>Fonte local com o pior buraco — a que precisa ser reassada primeiro.</summary>
+            public string worstFontName = string.Empty;
+
+            public bool Covered => missingCount == 0;
+        }
 
         /// <summary>
         /// Tudo que os passos precisam saber, calculado de uma vez só. Nada aqui pode ser
@@ -53,6 +71,19 @@ namespace FineLocalization.EditorTools
             public readonly List<string> needBundle = new();
             public readonly List<string> latinWithoutEntry = new();
             public readonly List<string> missingEntries = new();
+
+            /// <summary>
+            /// Cobertura real das fontes locais, por idioma sem bundle. Antes da correção o Hub
+            /// dizia "fonte local cobre" só porque o script era Latin, sem abrir fonte nenhuma —
+            /// e um idioma Latin com acentuação estendida (vi) passava com ✔ e caixinhas em tela.
+            /// </summary>
+            public readonly Dictionary<string, LocalCoverage> localCoverage = new();
+
+            /// <summary>Fontes locais que a verificação usou, para o texto da janela.</summary>
+            public readonly List<string> localFontNames = new();
+
+            /// <summary>Por que a verificação não pôde rodar. Vazio = rodou.</summary>
+            public string localCoverageUnavailable = string.Empty;
 
             public int entriesTotal;
             public int sourceFontsMissing;
@@ -260,6 +291,8 @@ namespace FineLocalization.EditorTools
                 }
             }
 
+            ScanLocalFontCoverage(state);
+
             // Varredura caríssima: todo prefab e toda cena do projeto lidos como texto. Uma vez
             // por snapshot — era isso que travava a janela quando rodava por frame.
             state.legacyLoaderPresent = RemoteFontLoaderMigrator.HasLegacyLoaderInProject();
@@ -303,6 +336,113 @@ namespace FineLocalization.EditorTools
                         state.needBundle.Add(language);
                 }
             }
+        }
+
+        /// <summary>
+        /// Confere, glifo por glifo, se as fontes locais atendem cada idioma que não baixa bundle.
+        ///
+        /// Existia a máquina para isso (<see cref="CountMissingGlyphs"/>), mas o único caller
+        /// percorria <c>_buildConfig.entries</c> — ou seja, só idioma que já tinha bundle. Idioma
+        /// classificado como Latin não tem entry, então nunca era medido e o Hub afirmava
+        /// "fonte local cobre" por dedução de script. Para quase todo idioma Latin a dedução vale;
+        /// para vietnamita, turco e afins não, e o erro só aparecia como caixinha em produção.
+        ///
+        /// Quando não há como medir (nenhum downloader na cena aberta, nenhuma Main Font, charset
+        /// não gerado) o resultado é <i>desconhecido</i>, nunca "coberto": afirmar cobertura sem
+        /// medir foi exatamente o bug.
+        /// </summary>
+        private void ScanLocalFontCoverage(Snapshot state)
+        {
+            if (state.latinWithoutEntry.Count == 0)
+                return;
+
+            if (!state.charactersGenerated)
+            {
+                state.localCoverageUnavailable =
+                    "os TXT de caracteres não foram gerados — rode o passo de gerar caracteres.";
+                return;
+            }
+
+            var fonts = FindLocalMainFonts(out var unavailable);
+            if (fonts.Count == 0)
+            {
+                state.localCoverageUnavailable = unavailable;
+                return;
+            }
+
+            foreach (var font in fonts)
+                state.localFontNames.Add(font.name);
+
+            foreach (var language in state.latinWithoutEntry)
+            {
+                var expected = BuildRemoteFontBundles.LoadExpectedCharactersForLanguage(language, out _);
+                if (string.IsNullOrEmpty(expected))
+                    continue;
+
+                var coverage = new LocalCoverage();
+
+                // Qualquer Main Font pode acabar renderizando o texto do idioma, então o idioma só
+                // está coberto quando TODAS têm o glifo. Reportar a pior primeiro é o que diz qual
+                // asset reassar.
+                foreach (var font in fonts)
+                {
+                    var missing = CountMissingGlyphs(font, expected, out var sample);
+                    if (missing <= coverage.missingCount)
+                        continue;
+
+                    coverage.missingCount = missing;
+                    coverage.sample = sample;
+                    coverage.worstFontName = font.name;
+                }
+
+                state.localCoverage[language] = coverage;
+            }
+        }
+
+        /// <summary>
+        /// Main Font Assets do <c>RuntimeLocaleDownloader</c> das cenas abertas, lidas via
+        /// <see cref="SerializedObject"/> porque <c>remoteFonts</c> é privado — o mesmo caminho
+        /// que o inspector do componente usa.
+        /// </summary>
+        private static List<TMP_FontAsset> FindLocalMainFonts(out string unavailable)
+        {
+            unavailable = string.Empty;
+            var fonts = new List<TMP_FontAsset>();
+
+            var downloaders = UnityEngine.Object.FindObjectsByType<RuntimeLocaleDownloader>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+            if (downloaders == null || downloaders.Length == 0)
+            {
+                unavailable =
+                    "nenhum RuntimeLocaleDownloader nas cenas abertas — abra a cena do jogo para " +
+                    "conferir as fontes locais.";
+                return fonts;
+            }
+
+            foreach (var downloader in downloaders)
+            {
+                var serialized = new SerializedObject(downloader);
+                var list = serialized.FindProperty("remoteFonts")?.FindPropertyRelative("mainFontAssets");
+                if (list == null || !list.isArray)
+                    continue;
+
+                for (int i = 0; i < list.arraySize; i++)
+                {
+                    var font = list.GetArrayElementAtIndex(i).objectReferenceValue as TMP_FontAsset;
+                    if (font != null && !fonts.Contains(font))
+                        fonts.Add(font);
+                }
+            }
+
+            if (fonts.Count == 0)
+            {
+                unavailable =
+                    "o RuntimeLocaleDownloader não tem Main Font Assets preenchido — sem isso não " +
+                    "há o que conferir, e a fonte remota também não tem onde entrar como fallback.";
+            }
+
+            return fonts;
         }
 
         // --------------------------------------------------------------- Cabeçalho
@@ -498,10 +638,21 @@ namespace FineLocalization.EditorTools
             {
                 foreach (var language in _state.languages)
                 {
+                    EditorGUILayout.LabelField($"  {language}", DescribeFontStatus(language), EditorStyles.miniLabel);
+                }
+
+                if (!string.IsNullOrEmpty(_state.localCoverageUnavailable))
+                {
                     EditorGUILayout.LabelField(
-                        $"  {language}",
-                        _state.needBundle.Contains(language) ? "precisa de bundle de fonte" : "fonte local cobre",
-                        EditorStyles.miniLabel
+                        $"  Cobertura local não verificada: {_state.localCoverageUnavailable}",
+                        EditorStyles.wordWrappedMiniLabel
+                    );
+                }
+                else if (_state.localFontNames.Count > 0)
+                {
+                    EditorGUILayout.LabelField(
+                        $"  Conferido contra: {string.Join(", ", _state.localFontNames)}",
+                        EditorStyles.wordWrappedMiniLabel
                     );
                 }
             }
@@ -536,10 +687,24 @@ namespace FineLocalization.EditorTools
 
         private void DrawEntriesStep()
         {
-            BeginStep("Entradas de bundle", _state.missingEntries.Count == 0 && _state.needBundle.Count > 0,
+            // O ✔ também depende das fontes locais: um idioma latino com glifo faltando não tem
+            // bundle para acusar, e marcar o passo como pronto era o que escondia o problema.
+            var localGaps = CountLocalCoverageGaps();
+
+            BeginStep("Entradas de bundle",
+                _state.missingEntries.Count == 0 && _state.needBundle.Count > 0 && localGaps == 0,
                 "Uma entrada por idioma que precisa de fonte remota, com a pasta criada. Nome do bundle e pasta saem da coluna da planilha.");
 
-            if (_state.needBundle.Count == 0)
+            if (localGaps > 0)
+            {
+                EditorGUILayout.HelpBox(
+                    $"{localGaps} idioma(s) latino(s) não baixam bundle mas a fonte local não tem todos " +
+                    "os glifos que eles pedem — o texto sai com caixinhas. Veja a lista abaixo.",
+                    MessageType.Warning
+                );
+            }
+
+            if (_state.needBundle.Count == 0 && localGaps == 0)
             {
                 EditorGUILayout.HelpBox("Nenhum idioma detectado precisa de fonte remota.", MessageType.Info);
                 EndStep();
@@ -564,12 +729,13 @@ namespace FineLocalization.EditorTools
             if (_state.latinWithoutEntry.Count > 0)
             {
                 EditorGUILayout.Space(2);
-                EditorGUILayout.LabelField("Latino sem bundle (normal — a fonte local cobre):", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField("Latino sem bundle (a fonte local precisa cobrir):", EditorStyles.miniLabel);
 
                 foreach (var language in _state.latinWithoutEntry)
                 {
                     EditorGUILayout.BeginHorizontal();
                     EditorGUILayout.LabelField($"  {language}", EditorStyles.miniLabel, GUILayout.Width(120));
+                    EditorGUILayout.LabelField(DescribeFontStatus(language), EditorStyles.miniLabel, GUILayout.Width(230));
                     if (GUILayout.Button("forçar bundle", EditorStyles.miniButton, GUILayout.Width(100)))
                     {
                         _buildConfig.AddMissingEntries(new[] { language });
@@ -582,6 +748,19 @@ namespace FineLocalization.EditorTools
                         GUIUtility.ExitGUI();
                     }
                     EditorGUILayout.EndHorizontal();
+
+                    if (_state.localCoverage.TryGetValue(language, out var coverage) && !coverage.Covered)
+                    {
+                        EditorGUILayout.LabelField(
+                            $"      '{coverage.worstFontName}' não tem: {coverage.sample}",
+                            EditorStyles.wordWrappedMiniLabel
+                        );
+                        EditorGUILayout.LabelField(
+                            $"      Reasse a fonte local com characters_{language}.txt " +
+                            "(ou characters_latin_base.txt, que já reúne os idiomas latinos).",
+                            EditorStyles.wordWrappedMiniLabel
+                        );
+                    }
                 }
             }
 
@@ -832,9 +1011,12 @@ namespace FineLocalization.EditorTools
                     }
                     else if (HasBakedFont(entry, out var font))
                     {
-                        var missing = CountMissingGlyphs(font, expected);
+                        var missing = CountMissingGlyphs(font, expected, out var missingSample);
                         if (missing > 0)
-                            problems.Add($"'{bundleName}': a fonte assada não tem {missing} glifo(s) da coluna.");
+                            problems.Add(
+                                $"'{bundleName}': a fonte assada não tem {missing} glifo(s) da coluna. " +
+                                $"Faltando: {missingSample}"
+                            );
                     }
 
                     if (!File.Exists(Path.Combine(output, bundleName + ".ft")))
@@ -857,6 +1039,31 @@ namespace FineLocalization.EditorTools
             {
                 if (_buildConfig == null || _buildConfig.FindEntryForLanguage(language) == null)
                     problems.Add($"A coluna '{language}' precisa de fonte remota e não tem entrada de bundle.");
+            }
+
+            // Idioma Latin não baixa bundle, então a fonte local é a única que vai renderizar —
+            // e até aqui ninguém conferia se ela tem os glifos. É o caso do vietnamita: script
+            // latino, mas com Latin Extended Additional (U+1Exx) que uma fonte assada só com
+            // Latin-1 não tem. Sem esta checagem o Hub dava ✔ e o texto saía com caixinhas.
+            foreach (var pair in _state.localCoverage)
+            {
+                if (pair.Value.Covered)
+                    continue;
+
+                problems.Add(
+                    $"A coluna '{pair.Key}' não baixa bundle (script latino), mas a fonte local " +
+                    $"'{pair.Value.worstFontName}' não tem {pair.Value.missingCount} glifo(s) que ela pede. " +
+                    $"Reasse a fonte com characters_{pair.Key}.txt ou characters_latin_base.txt. " +
+                    $"Faltando: {pair.Value.sample}"
+                );
+            }
+
+            if (!string.IsNullOrEmpty(_state.localCoverageUnavailable) && _state.latinWithoutEntry.Count > 0)
+            {
+                problems.Add(
+                    "Não foi possível conferir a cobertura das fontes locais: " +
+                    _state.localCoverageUnavailable
+                );
             }
 
             return problems;
@@ -947,12 +1154,55 @@ namespace FineLocalization.EditorTools
             return false;
         }
 
-        private static int CountMissingGlyphs(TMP_FontAsset font, string expected)
+        /// <summary>
+        /// Texto do status de fonte de um idioma. Um idioma sem bundle só é reportado como coberto
+        /// quando a conferência de glifo rodou e passou — se não deu para medir, o status é
+        /// "não verificado", nunca "cobre".
+        /// </summary>
+        /// <summary>Idiomas sem bundle cuja fonte local comprovadamente não cobre o charset.</summary>
+        private int CountLocalCoverageGaps()
         {
+            var gaps = 0;
+            foreach (var pair in _state.localCoverage)
+            {
+                if (!pair.Value.Covered)
+                    gaps++;
+            }
+
+            return gaps;
+        }
+
+        private string DescribeFontStatus(string language)
+        {
+            if (_state.needBundle.Contains(language))
+                return "precisa de bundle de fonte";
+
+            if (_state.localCoverage.TryGetValue(language, out var coverage))
+            {
+                return coverage.Covered
+                    ? "fonte local cobre"
+                    : $"fonte local NÃO cobre — faltam {coverage.missingCount} glifo(s)";
+            }
+
+            return string.IsNullOrEmpty(_state.localCoverageUnavailable)
+                ? "fonte local cobre"
+                : "fonte local não verificada";
+        }
+
+        /// <summary>
+        /// Glifos de <paramref name="expected"/> que <paramref name="font"/> não tem, com uma
+        /// amostra legível. A amostra é o que permite achar o charset certo sem adivinhar: só o
+        /// número não diz se falta acentuação de um idioma ou um símbolo solto.
+        /// </summary>
+        private static int CountMissingGlyphs(TMP_FontAsset font, string expected, out string sample)
+        {
+            sample = string.Empty;
+
             if (font == null || string.IsNullOrEmpty(expected))
                 return 0;
 
             var seen = new HashSet<char>();
+            var samples = new List<string>();
             var missing = 0;
 
             foreach (var c in expected)
@@ -960,10 +1210,18 @@ namespace FineLocalization.EditorTools
                 if (char.IsControl(c) || char.IsWhiteSpace(c) || !seen.Add(c))
                     continue;
 
-                if (!font.HasCharacter(c))
-                    missing++;
+                if (font.HasCharacter(c))
+                    continue;
+
+                missing++;
+                if (samples.Count < MissingGlyphSampleSize)
+                    samples.Add($"{c}(U+{(int)c:X4})");
             }
 
+            if (missing > samples.Count)
+                samples.Add($"+{missing - samples.Count}");
+
+            sample = string.Join(" ", samples);
             return missing;
         }
 
